@@ -1,0 +1,51 @@
+# Python specific
+*.py[cod]
+__pycache__/
+*.so
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+pip-wheel-metadata/
+
+# PyTorch specific
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+runs/  # For TensorBoard logs
+
+# Common image formats
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.tif
+
+# Data files
+*.csv
+*.h5
+*.hdf5
+*.npz
+*.npy
+*.pkl
+*.db
+
+# System specific
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+logs/
+debug.log
+
+# Weights and Biases specific
+wandb/
