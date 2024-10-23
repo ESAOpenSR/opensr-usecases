@@ -51,6 +51,29 @@ class Validator:
         # Initialize an empty dictionary to store metrics for various prediction types (LR, HR, SR)
         self.metrics = {}
         
+        
+    def print_raw_metrics(self):
+        """
+        Prints the raw metrics stored in the object.
+        """
+        if len(self.metrics.keys()) == 0:
+            print("No metrics have been computed yet.")
+        for k in self.metrics.keys():
+            print(k, "\n", self.metrics[k], "\n")
+            
+    def print_sr_improvement(self):
+        from utils.pretty_print_metrics import print_sr_improvement
+        self.print_sr_improvement = print_sr_improvement(self.metrics)
+
+    def return_raw_metrics(self):
+        """
+        Returns the raw metrics stored in the object.
+        """
+        if len(self.metrics.keys()) == 0:
+            print("No metrics have been computed yet. Returning 'None'.")
+            return None
+        else:
+            return self.metrics
                 
     def predict_masks_metrics(self, dataloader, model, pred_type,debugging=False):
         """
@@ -106,9 +129,6 @@ class Validator:
         
         # Store the averaged metrics for the specified prediction type
         self.metrics[pred_type] = averaged_metrics
-        
-        # Return the averaged metrics
-        return averaged_metrics
     
     
 
@@ -126,11 +146,21 @@ if __name__ == "__main__":
 
     # test
     val_obj = Validator()
-    metrics2 = val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="LR")
+    
+    # calculate metrics
+    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="LR",debugging=True)
+    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="HR",debugging=True)
+    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="SR",debugging=True)
+
+    
+    # retrieve metrics
+    metrics = val_obj.return_raw_metrics()
+    
+    # prettypring metrics
+    val_obj.print_sr_improvement()
+
     
                 
-        
-
                                     
                 
         

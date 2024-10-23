@@ -10,11 +10,13 @@ The main focus of the validation process is to understand how well objects (e.g.
 
 ## Features
 
-- **Customizable**: Users can easily plug in their own dataset and models for validation.
-- **Multi-Resolution Comparison**: Validates segmentation models on LR, HR, and SR versions of images.
-- **Standard Segmentation Metrics**: Includes standard metrics such as IoU, Dice coefficient, Precision, Recall, and Accuracy.
-- **Object Identification Metrics**: Special metrics that compute the percentage of objects that are correctly identified, with a particular focus on changes in performance based on the size of the objects (e.g., small vs. large buildings).
-- **Averaged Results**: Metrics are calculated for each batch and averaged across the entire dataset for easy comparison.
+- **Customizable Dataset and Models**: Easily plug in your own dataset and models.
+- **Multi-Resolution Comparison**: Validate models on LR, HR, and SR versions of images.
+- **Standard Segmentation Metrics**: Computes metrics like IoU, Dice coefficient, Precision, Recall, and Accuracy.
+- **Object Identification Metrics**: Special metrics that compute the percentage of objects correctly identified, focusing on size-based object identification.
+- **Averaged Metrics**: Metrics are calculated for each batch and averaged across the entire dataset.
+- **Debugging Support**: An optional debugging mode is available to limit the number of iterations for faster testing.
+
 
 ## How It Works
 
@@ -82,39 +84,64 @@ To use this tool, you will need to follow these steps:
 
 ```python
 from torch.utils.data import DataLoader
-from my_dataset import MyDataset
-from my_models import LRModel, HRModel, SRModel
+from models.placeholder_model import PlaceholderModel
+from data.dataset_usa_buildings import SegmentationDataset
 from validator import Validator
 
 # Initialize the dataset and models
-dataset = MyDataset()
-lr_model = LRModel()
-hr_model = HRModel()
-sr_model = SRModel()
+dataset = SegmentationDataset(phase="test", image_type="sr")
+dataloader = DataLoader(dataset, batch_size=12, shuffle=False)
+model = PlaceholderModel()
 
-# Create the Validator object
-validator = Validator(device="cuda", debugging=False)
+# Create a Validator object
+validator = Validator(device="cuda", debugging=True)
 
-# Create a dataloader
-dataloader = DataLoader(dataset, batch_size=16, shuffle=False)
+# Run validation for different resolutions
+validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="LR", debugging=True)
+validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="HR", debugging=True)
+validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="SR", debugging=True)
 
-# Run validation for SR model
-metrics_sr = validator.predict_masks_metrics(dataloader, sr_model, pred_type="SR")
+# Retrieve and print the raw metrics
+metrics = validator.return_raw_metrics()
+validator.print_sr_improvement()
+```
 
-# Run validation for LR and HR models
-metrics_lr = validator.predict_masks_metrics(dataloader, lr_model, pred_type="LR")
-metrics_hr = validator.predict_masks_metrics(dataloader, hr_model, pred_type="HR")
+4. **Debugging**
+If you want to quickly test or debug your models without running through the entire dataset, set the debugging flag to True. This will limit the evaluation to 10 batches:  
+```python
+validator = Validator(device="cuda", debugging=True)
+```
 
-# Print results
-print("SR Metrics:", metrics_sr)
-print("LR Metrics:", metrics_lr)
-print("HR Metrics:", metrics_hr)
+## Main Functions  
+- **predict_masks_metrics(dataloader, model, pred_type)**: Predicts masks using the provided model and computes relevant segmentation metrics.
+- **return_raw_metrics()**: Returns the raw metrics stored in the object.
+- **print_raw_metrics()**: Prints the raw metrics stored in the object.
+- **print_sr_improvement()**: Prints a table showing SR metric improvement over LR and loss over HR.
+
+## Example Output
+The tool generates a table comparing SR metric improvement over LR and loss over HR. Here's an example:
+```sql
++----------------------------------+---------------------------+---------------------------+
+|              Metric              | Improvement of SR over LR | Improvement of HR over SR |
++----------------------------------+---------------------------+---------------------------+
+|          avg_obj_score           |          -0.0002          |          -0.0003          |
+|          perc_found_obj          |          -3.8546          |           0.4100          |
+| avg_obj_pred_score_by_size_11-20 |           0.0123          |          -0.0003          |
+| avg_obj_pred_score_by_size_5-10  |          -0.0082          |           0.0071          |
+|  avg_obj_pred_score_by_size_21+  |          -0.0032          |           0.0005          |
+|  avg_obj_pred_score_by_size_0-4  |          -0.0571          |          -0.0001          |
+|               IoU                |          -0.0001          |          -0.0000          |
+|               Dice               |          -0.0002          |          -0.0001          |
+|            Precision             |          -0.0001          |          -0.0001          |
+|              Recall              |          -0.0004          |           0.0078          |
+|             Accuracy             |          -0.0002          |          -0.0003          |
++----------------------------------+---------------------------+---------------------------+
 ```
 
 ## Results and Analysis
 At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models.
 
 ## Conclusion
-The Super-Resolution Model Validator provides a comprehensive framework for evaluating the performance of segmentation models across different image resolutions. Whether you're working in remote sensing or general computer vision, this tool offers detailed insights into how segmentation accuracy and object identification change with the resolution of input data.  
+The Super-Resolution Segmentation Validator provides a simple and effective way to validate your segmentation models across different image resolutions (LR, HR, SR). Use it to analyze and improve your models, while gaining insights into how resolution impacts segmentation performance.  
 By comparing the results across LR, HR, and SR images, you can make informed decisions about the effectiveness of your super-resolution models and understand how resolution impacts segmentation tasks in your specific domain.
 
