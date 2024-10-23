@@ -83,23 +83,31 @@ To use this tool, you will need to follow these steps:
 #### Example Code
 
 ```python
-from torch.utils.data import DataLoader
 from models.placeholder_model import PlaceholderModel
-from data.dataset_usa_buildings import SegmentationDataset
-from validator import Validator
+from data.placeholder_dataset import PlaceholderDataset
 
-# Initialize the dataset and models
-dataset = SegmentationDataset(phase="test", image_type="sr")
-dataloader = DataLoader(dataset, batch_size=12, shuffle=False)
-model = PlaceholderModel()
+# Initialize the datasets - For LR,SR,HR
+dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
+dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
+dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
+
+# Initialize dataloaders for each dataset
+dataloader_lr = DataLoader(dataset_lr, batch_size=12, shuffle=False)
+dataloader_hr = DataLoader(dataset_hr, batch_size=12, shuffle=False)
+dataloader_sr = DataLoader(dataset_sr, batch_size=12, shuffle=False)
+
+# Initialize different models for LR, HR, and SR
+lr_model = PlaceholderModel()
+hr_model = PlaceholderModel()
+sr_model = PlaceholderModel()
 
 # Create a Validator object
 validator = Validator(device="cuda", debugging=True)
 
 # Run validation for different resolutions
-validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="LR", debugging=True)
-validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="HR", debugging=True)
-validator.predict_masks_metrics(dataloader=dataloader, model=model, pred_type="SR", debugging=True)
+validator.calculate_masks_metrics(dataloader=dataloader_lr, model=lr_model, pred_type="LR", debugging=True)
+validator.calculate_masks_metrics(dataloader=dataloader_hr, model=hr_model, pred_type="HR", debugging=True)
+validator.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred_type="SR", debugging=True)
 
 # Retrieve and print the raw metrics
 metrics = validator.return_raw_metrics()
@@ -113,7 +121,7 @@ validator = Validator(device="cuda", debugging=True)
 ```
 
 ## Main Functions  
-- **predict_masks_metrics(dataloader, model, pred_type)**: Predicts masks using the provided model and computes relevant segmentation metrics.
+- **calculate_masks_metrics(dataloader, model, pred_type)**: Predicts masks using the provided model and computes relevant segmentation metrics.
 - **return_raw_metrics()**: Returns the raw metrics stored in the object.
 - **print_raw_metrics()**: Prints the raw metrics stored in the object.
 - **print_sr_improvement()**: Prints a table showing SR metric improvement over LR and loss over HR.

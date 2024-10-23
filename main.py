@@ -75,7 +75,7 @@ class Validator:
         else:
             return self.metrics
                 
-    def predict_masks_metrics(self, dataloader, model, pred_type,debugging=False):
+    def calculate_masks_metrics(self, dataloader, model, pred_type,debugging=False):
         """
         Predicts masks for a given dataset using the provided model and computes relevant metrics.
         
@@ -104,7 +104,7 @@ class Validator:
         # Disable gradient computation for faster inference
         with torch.no_grad():
             # Iterate over batches of images and ground truth masks
-            for id, batch in enumerate(tqdm(dataloader, desc="Predicting masks and calculating metrics")):
+            for id, batch in enumerate(tqdm(dataloader, desc="Predicting masks and calculating metrics for "+pred_type+":")):
                 # Unpack the batch (images and ground truth masks)
                 images, gt_masks = batch
                 
@@ -135,23 +135,31 @@ class Validator:
 if __name__ == "__main__":
 
     # Get data
-    from data.dataset_usa_buildings import SegmentationDataset
-    ds = SegmentationDataset(phase="test",image_type="sr")
-    dl = DataLoader(ds,batch_size=12,shuffle=False)
+    # Initialize the datasets - For LR,SR,HR
+    from data.placeholder_dataset import PlaceholderDataset
+    dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
+    dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
+    dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
+
+    # Initialize dataloaders for each dataset
+    dataloader_lr = DataLoader(dataset_lr, batch_size=12, shuffle=False)
+    dataloader_hr = DataLoader(dataset_hr, batch_size=12, shuffle=False)
+    dataloader_sr = DataLoader(dataset_sr, batch_size=12, shuffle=False)
     
 
     # Get model
     from models.placeholder_model import PlaceholderModel
-    model = PlaceholderModel()
+    lr_model = PlaceholderModel()
+    hr_model = PlaceholderModel()
+    sr_model = PlaceholderModel()
 
     # test
     val_obj = Validator()
     
     # calculate metrics
-    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="LR",debugging=True)
-    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="HR",debugging=True)
-    val_obj.predict_masks_metrics(dataloader=ds,model=model,pred_type="SR",debugging=True)
-
+    val_obj.calculate_masks_metrics(dataloader=dataloader_lr, model=lr_model, pred_type="LR", debugging=True)
+    val_obj.calculate_masks_metrics(dataloader=dataloader_hr, model=hr_model, pred_type="HR", debugging=True)
+    val_obj.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred_type="SR", debugging=True)
     
     # retrieve metrics
     metrics = val_obj.return_raw_metrics()
