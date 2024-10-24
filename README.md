@@ -16,6 +16,7 @@ The main focus of the validation process is to understand how well objects (e.g.
 - **Object Identification Metrics**: Special metrics that compute the percentage of objects correctly identified, focusing on size-based object identification.
 - **Averaged Metrics**: Metrics are calculated for each batch and averaged across the entire dataset.
 - **Debugging Support**: An optional debugging mode is available to limit the number of iterations for faster testing.
+- **mAP Plotting**: Show how the mAP for object detecion looks like for each input data type.
 
 
 ## How It Works
@@ -136,6 +137,8 @@ validator = Validator(device="cuda", debugging=True)
 - **return_raw_metrics()**: Returns the raw metrics stored in the object.
 - **print_raw_metrics()**: Prints the raw metrics stored in the object.
 - **print_sr_improvement()**: Prints a table showing SR metric improvement over LR and loss over HR.
+- **get_mAP_curve()**: Computes and stores the mean Average Precision (mAP) curve over multiple thresholds for a given model and dataset across a specified number of batches.
+- **plot_mAP_curve()**: Plots the mAP curve for the stored prediction types and returns it as a PIL.Image.
 
 ## Example Output
 ### Impriovement Statistics
@@ -158,10 +161,10 @@ The tool generates a table comparing SR metric improvement over LR and loss over
 +----------------------------------+---------------------------+---------------------------+
 ```
 ### mAP Curve for Detected Objects
-![mAP Curve](resources/mAP:plot.png?raw=true)
+![mAP Curve](resources/mAP_plot.png?raw=true)
 
 ## Results and Analysis
-At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models.
+At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models. If required, you will also see a mAP curve for each data type prediciton.
 
 ## Conclusion
 The Super-Resolution Segmentation Validator provides a simple and effective way to validate your segmentation models across different image resolutions (LR, HR, SR). Use it to analyze and improve your models, while gaining insights into how resolution impacts segmentation performance.  
