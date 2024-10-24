@@ -1,3 +1,5 @@
+instructions.txt
+
 # Python specific
 *.py[cod]
 __pycache__/
