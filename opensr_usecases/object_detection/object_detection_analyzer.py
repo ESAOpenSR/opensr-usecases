@@ -6,10 +6,10 @@ import torch
 
 class ObjectDetectionAnalyzer:
     def __init__(self):
-        from object_detection.object_detection_utils import compute_avg_object_prediction_score
-        from object_detection.object_detection_utils import compute_found_objects_percentage
-        from object_detection.object_detection_utils import compute_avg_object_prediction_score_by_size
-        from object_detection.object_detection_utils import standard_metrics
+        from opensr_usecases.object_detection.object_detection_utils import compute_avg_object_prediction_score
+        from opensr_usecases.object_detection.object_detection_utils import compute_found_objects_percentage
+        from opensr_usecases.object_detection.object_detection_utils import compute_avg_object_prediction_score_by_size
+        from opensr_usecases.object_detection.object_detection_utils import standard_metrics
         self.compute_avg_object_prediction_score = compute_avg_object_prediction_score
         self.compute_found_objects_percentage = compute_found_objects_percentage
         self.compute_avg_object_prediction_score_by_size = compute_avg_object_prediction_score_by_size

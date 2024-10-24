@@ -2,12 +2,14 @@
 import torch
 from torch.utils.data import DataLoader
 from PIL import Image
-from numpy import np
+import numpy as np
 import os
 from tqdm import tqdm
 
 # local
-from utils.utils import compute_average_metrics
+from .utils.utils import compute_average_metrics
+
+
 
 
 class Validator:
@@ -45,7 +47,7 @@ class Validator:
         self.debugging = debugging
 
         # Load the object detection analyzer
-        from object_detection.object_detection_analyzer import ObjectDetectionAnalyzer
+        from .object_detection.object_detection_analyzer import ObjectDetectionAnalyzer
         self.object_analyzer = ObjectDetectionAnalyzer()
         
         # Initialize an empty dictionary to store metrics for various prediction types (LR, HR, SR)
@@ -62,7 +64,7 @@ class Validator:
             print(k, "\n", self.metrics[k], "\n")
             
     def print_sr_improvement(self):
-        from utils.pretty_print_metrics import print_sr_improvement
+        from .utils.pretty_print_metrics import print_sr_improvement
         self.print_sr_improvement = print_sr_improvement(self.metrics)
 
     def return_raw_metrics(self):
@@ -130,45 +132,3 @@ class Validator:
         # Store the averaged metrics for the specified prediction type
         self.metrics[pred_type] = averaged_metrics
     
-    
-
-if __name__ == "__main__":
-
-    # Get data
-    # Initialize the datasets - For LR,SR,HR
-    from data.placeholder_dataset import PlaceholderDataset
-    dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
-    dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
-    dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
-
-    # Initialize dataloaders for each dataset
-    dataloader_lr = DataLoader(dataset_lr, batch_size=12, shuffle=False)
-    dataloader_hr = DataLoader(dataset_hr, batch_size=12, shuffle=False)
-    dataloader_sr = DataLoader(dataset_sr, batch_size=12, shuffle=False)
-    
-
-    # Get model
-    from models.placeholder_model import PlaceholderModel
-    lr_model = PlaceholderModel()
-    hr_model = PlaceholderModel()
-    sr_model = PlaceholderModel()
-
-    # test
-    val_obj = Validator()
-    
-    # calculate metrics
-    val_obj.calculate_masks_metrics(dataloader=dataloader_lr, model=lr_model, pred_type="LR", debugging=True)
-    val_obj.calculate_masks_metrics(dataloader=dataloader_hr, model=hr_model, pred_type="HR", debugging=True)
-    val_obj.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred_type="SR", debugging=True)
-    
-    # retrieve metrics
-    metrics = val_obj.return_raw_metrics()
-    
-    # prettypring metrics
-    val_obj.print_sr_improvement()
-
-    
-                
-                                    
-                
-        
