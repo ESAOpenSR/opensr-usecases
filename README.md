@@ -112,6 +112,17 @@ validator.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred
 # Retrieve and print the raw metrics
 metrics = validator.return_raw_metrics()
 validator.print_sr_improvement()
+
+
+# calculate mAP curves
+val_obj.get_mAP_curve(dataloader_lr, lr_model, pred_type="LR", amount_batches=10)
+val_obj.get_mAP_curve(dataloader_hr, hr_model, pred_type="HR", amount_batches=10)
+val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10)
+
+# plot mAP curve
+mAP_plot = val_obj.plot_mAP_curve()
+mAP_plot.save("resources/mAP_plot.png")
+
 ```
 
 4. **Debugging**
@@ -127,6 +138,7 @@ validator = Validator(device="cuda", debugging=True)
 - **print_sr_improvement()**: Prints a table showing SR metric improvement over LR and loss over HR.
 
 ## Example Output
+### Impriovement Statistics
 The tool generates a table comparing SR metric improvement over LR and loss over HR. Here's an example:
 ```sql
 +----------------------------------+---------------------------+---------------------------+
@@ -145,6 +157,8 @@ The tool generates a table comparing SR metric improvement over LR and loss over
 |             Accuracy             |          -0.0002          |          -0.0003          |
 +----------------------------------+---------------------------+---------------------------+
 ```
+### mAP Curve for Detected Objects
+![mAP Curve](resources/mAP:plot.png?raw=true)
 
 ## Results and Analysis
 At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models.

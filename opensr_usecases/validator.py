@@ -5,6 +5,9 @@ from PIL import Image
 import numpy as np
 import os
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+from PIL import Image
+import io
 
 # local
 from .utils.utils import compute_average_metrics
@@ -52,6 +55,7 @@ class Validator:
         
         # Initialize an empty dictionary to store metrics for various prediction types (LR, HR, SR)
         self.metrics = {}
+        self.mAP_metrics = {}
         
         
     def print_raw_metrics(self):
@@ -131,4 +135,105 @@ class Validator:
         
         # Store the averaged metrics for the specified prediction type
         self.metrics[pred_type] = averaged_metrics
+        
+        
+    def get_mAP_curve(self, dataloader, model, pred_type="LR", amount_batches=50):
+        model = model.eval().to(self.device)
+        
+        found_percentages = []
+        thresholds = np.linspace(0, 1, 50)
+
+        percentage_batch = []
+        
+        # Run the prediction once for the entire batch
+        for i in tqdm(range(amount_batches), desc="Computing mAP curve for " + pred_type):  # Assuming 10 iterations or batches
+            images, gt_masks = next(iter(dataloader))
+            images = images.to(self.device)
+            with torch.no_grad():
+                pred_masks = model(images)  # Run the prediction once
+            
+            # Ensure masks are valid
+            gt_masks, pred_masks = self.object_analyzer.check_mask_validity(gt_masks), self.object_analyzer.check_mask_validity(pred_masks)
+            
+            # Iterate over thresholds
+            threshold_percentages = []
+            for thresh in thresholds:
+                threshold_percentages.append(self.object_analyzer.compute_found_objects_percentage(gt_masks, pred_masks, thresh))
+            
+            # Calculate the average found percentage for each threshold
+            percentage_batch.append(threshold_percentages)
+        
+        # Calculate the mean across batches
+        found_percentages = np.mean(percentage_batch, axis=0)
+
+        # Store results in the mAP metrics dictionary
+        self.mAP_metrics[pred_type] = {"thresholds": thresholds, "TP_percentage": found_percentages}
+
+        
+    def plot_mAP_curve(self):
+        """
+        Plots and returns the mean Average Precision (mAP) curve as a PIL image.
+
+        This method visualizes the mAP curve for different prediction types based on 
+        previously computed mAP metrics stored in the `self.mAP_metrics` dictionary. 
+        The mAP curve is plotted by comparing the confidence thresholds with the 
+        percentage of objects found (True Positives) at each threshold.
+
+        If no mAP metrics are available, it prints a message guiding the user to compute 
+        the metrics first.
+
+        Returns:
+            PIL.Image: The plotted mAP curve as a PIL image object. If no metrics are 
+                    available, returns None.
+
+        Raises:
+            None. This function will handle empty data and simply return without plotting 
+            if no mAP metrics are present.
+
+        Example:
+            If the mAP metrics have been computed using:
+            `Validator.get_mAP_curve(self, dataloader, model, pred_type='LR')`,
+            calling `plot_mAP_curve()` will return a PIL image of the mAP curve, which can 
+            be displayed or saved.
+
+        """
+        if len(self.mAP_metrics.keys()) == 0:
+            print("No mAP metrics have been computed yet.")
+            print("Compute with: Validator.get_mAP_curve(self,dataloader, model,pred_type='LR')")
+            return None
+        
+        # Initialize the figure
+        plt.figure()
+            
+        # Loop over all prediction types in mAP_metrics
+        for pred_type in self.mAP_metrics.keys():
+            thresholds = self.mAP_metrics[pred_type]["thresholds"]
+            found_percentages = self.mAP_metrics[pred_type]["TP_percentage"]
+            
+            # Plot the mAP curve
+            plt.plot(thresholds, found_percentages, label=f'{pred_type} mAP curve')
+        
+        # Adding labels and title
+        plt.xlabel('Confidence Threshold')
+        plt.ylabel('Percentage of Found Objects')
+        plt.title('mAP Curves for Different Prediction Types')
+        plt.legend()
+        plt.grid(True)
+        
+        # Save the plot to a buffer in PNG format
+        buf = io.BytesIO()
+        plt.savefig(buf, format='PNG')
+        plt.close()  # Close the plt figure to free memory
+        buf.seek(0)  # Move the buffer cursor to the beginning
+        
+        # Convert the buffer to a PIL image
+        image = Image.open(buf)
+        image.load() # Ensure the image is fully loaded
+        buf.close()  # Close the buffer after reading it
+                
+        # Return the PIL image
+        return image
+        
     
+ 
+                

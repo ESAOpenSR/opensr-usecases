@@ -23,7 +23,6 @@ checkpoints/
 runs/  # For TensorBoard logs
 
 # Common image formats
-*.png
 *.jpg
 *.jpeg
 *.gif

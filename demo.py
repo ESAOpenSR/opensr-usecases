@@ -46,8 +46,13 @@ metrics = val_obj.return_raw_metrics()
 # prettypring metrics
 val_obj.print_sr_improvement()
 
+# calculate mAP curves
+val_obj.get_mAP_curve(dataloader_lr, lr_model, pred_type="LR", amount_batches=10)
+val_obj.get_mAP_curve(dataloader_hr, hr_model, pred_type="HR", amount_batches=10)
+val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10)
+
+# plot mAP curve
+mAP_plot = val_obj.plot_mAP_curve()
+mAP_plot.save("resources/mAP_plot.png")
 
             
-                                
-            
-    

@@ -22,6 +22,8 @@ class ObjectDetectionAnalyzer:
             mask = mask.numpy()
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)
+        if mask.shape[1]==1:
+            mask = mask.squeeze()
         mask = mask.clip(0,1)
         return mask
         
