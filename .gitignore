@@ -1,4 +1,8 @@
+# Custom Files
 instructions.txt
+playground.py
+opensr_usecases/data/dataset/
+*.zip
 
 # Python specific
 *.py[cod]

@@ -7,10 +7,7 @@ import os
 from tqdm import tqdm
 
 # local
-import opensr_usecases
 from opensr_usecases import Validator
-
-    
 
 
 # Get data
