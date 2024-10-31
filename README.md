@@ -84,8 +84,8 @@ To use this tool, you will need to follow these steps:
 #### Example Code
 
 ```python
-from models.placeholder_model import PlaceholderModel
-from data.placeholder_dataset import PlaceholderDataset
+from opensr_usecases.models.placeholder_model import PlaceholderModel
+from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
 
 # Initialize the datasets - For LR,SR,HR
 dataset_lr = PlaceholderDataset(phase="test", image_type="lr")

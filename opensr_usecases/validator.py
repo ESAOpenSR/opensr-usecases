@@ -10,9 +10,8 @@ from PIL import Image
 import io
 
 # local
-from .utils.utils import compute_average_metrics
-
-
+#from .utils.utils import compute_average_metrics
+from opensr_usecases.utils.utils import compute_average_metrics
 
 
 class Validator:
