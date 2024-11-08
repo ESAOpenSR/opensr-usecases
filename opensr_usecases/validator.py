@@ -30,7 +30,7 @@ class Validator:
         metrics (dict): A dictionary to store averaged evaluation metrics for different model types (e.g., LR, HR, SR).
     """
 
-    def __init__(self, device="cpu", debugging=False):
+    def __init__(self, device="cpu", debugging=True):
         """
         Initializes the `Validator` class by setting the device, debugging flag, loading the object 
         detection analyzer, and preparing a metrics dictionary to store evaluation results.
@@ -47,6 +47,8 @@ class Validator:
         """
         self.device = device
         self.debugging = debugging
+        if self.debugging:
+            print("Warning: Debugging Mode is active. Only 10 batches will be processed.")
 
         # Load the object detection analyzer
         from .object_detection.object_detection_analyzer import ObjectDetectionAnalyzer
@@ -80,7 +82,7 @@ class Validator:
         else:
             return self.metrics
                 
-    def calculate_masks_metrics(self, dataloader, model, pred_type,debugging=False):
+    def calculate_masks_metrics(self, dataloader, model, pred_type):
         """
         Predicts masks for a given dataset using the provided model and computes relevant metrics.
         
@@ -95,7 +97,6 @@ class Validator:
         Raises:
             AssertionError: If pred_type is not one of ["LR", "HR", "SR"].
         """
-        self.debugging = debugging
         
         # Ensure that the prediction type is valid
         assert pred_type in ["LR", "HR", "SR"], "prediction type must be in ['LR', 'HR', 'SR']"
@@ -109,7 +110,8 @@ class Validator:
         # Disable gradient computation for faster inference
         with torch.no_grad():
             # Iterate over batches of images and ground truth masks
-            for id, batch in enumerate(tqdm(dataloader, desc="Predicting masks and calculating metrics for "+pred_type+":")):
+            image_count = 10 if self.debugging else len(dataloader)
+            for id, batch in enumerate(tqdm(dataloader, desc=f"Predicting masks and calculating metrics for {pred_type}",total=image_count)):
                 # Unpack the batch (images and ground truth masks)
                 images, gt_masks = batch
                 
@@ -126,7 +128,7 @@ class Validator:
                 metrics_list.append(batch_metrics)
                 
                 # Optional: Break the loop after 10 batches (for debugging or testing purposes)
-                if self.debugging and id >= 10:
+                if self.debugging and id == 10:
                     break
         
         # Compute the average of all metrics across the batches
@@ -210,7 +212,7 @@ class Validator:
             found_percentages = self.mAP_metrics[pred_type]["TP_percentage"]
             
             # Plot the mAP curve
-            plt.plot(thresholds, found_percentages, label=f'{pred_type} mAP curve')
+            plt.plot(thresholds[1:], found_percentages[1:], label=f'{pred_type} mAP curve')
         
         # Adding labels and title
         plt.xlabel('Confidence Threshold')

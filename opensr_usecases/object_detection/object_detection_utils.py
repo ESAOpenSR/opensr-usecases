@@ -5,7 +5,7 @@ Individual Functions for Object Detection Metrics
 from collections import defaultdict
 import numpy as np
 from scipy.ndimage import label
-
+import torch
 
 def compute_avg_object_prediction_score(binary_masks, predicted_masks):
     """
@@ -21,9 +21,13 @@ def compute_avg_object_prediction_score(binary_masks, predicted_masks):
     Returns:
         float: The overall average prediction score for all objects in the batch.
     """
+    binary_masks = torch.tensor(binary_masks) if not torch.is_tensor(binary_masks) else binary_masks
+    predicted_masks = torch.tensor(predicted_masks) if not torch.is_tensor(predicted_masks) else predicted_masks
     if binary_masks.ndim == 2 and predicted_masks.ndim == 2:
         predicted_masks = predicted_masks.unsqueeze(0)
         binary_masks = binary_masks.unsqueeze(0)
+    binary_masks = binary_masks.cpu().numpy()
+    predicted_masks = predicted_masks.cpu().numpy()
     
     total_sum = 0
     total_objects = 0
@@ -65,9 +69,13 @@ def compute_found_objects_percentage(binary_masks, predicted_masks, confidence_t
     Returns:
         float: The percentage of objects found with an average prediction score above the confidence threshold.
     """
+    binary_masks = torch.tensor(binary_masks) if not torch.is_tensor(binary_masks) else binary_masks
+    predicted_masks = torch.tensor(predicted_masks) if not torch.is_tensor(predicted_masks) else predicted_masks
     if binary_masks.ndim == 2 and predicted_masks.ndim == 2:
         predicted_masks = predicted_masks.unsqueeze(0)
         binary_masks = binary_masks.unsqueeze(0)
+    binary_masks = binary_masks.cpu().numpy()
+    predicted_masks = predicted_masks.cpu().numpy()
     
     total_objects = 0
     found_objects = 0
@@ -113,9 +121,13 @@ def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,th
         dict: A dictionary where the keys represent size ranges (e.g., '0-4', '5-10') and the values
               are the average prediction scores for objects in that size range, aggregated across the batch.
     """
+    binary_masks = torch.tensor(binary_masks) if not torch.is_tensor(binary_masks) else binary_masks
+    predicted_masks = torch.tensor(predicted_masks) if not torch.is_tensor(predicted_masks) else predicted_masks
     if binary_masks.ndim == 2 and predicted_masks.ndim == 2:
         predicted_masks = predicted_masks.unsqueeze(0)
         binary_masks = binary_masks.unsqueeze(0)
+    binary_masks = binary_masks.cpu().numpy()
+    predicted_masks = predicted_masks.cpu().numpy()
         
     # Define size ranges for grouping objects
     size_ranges = {
