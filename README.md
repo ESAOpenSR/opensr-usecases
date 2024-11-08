@@ -81,7 +81,7 @@ To use this tool, you will need to follow these steps:
 2. **Define Your Models**: Provide models for LR, HR, and SR image segmentation. Each model should be capable of outputting a predicted mask for the input images.
 3. **Run the Validation**: Use the provided `Validator` class to run the validation process and compute the metrics.
 
-#### Example Code
+#### Example Code 
 
 ```python
 from opensr_usecases.models.placeholder_model import PlaceholderModel
