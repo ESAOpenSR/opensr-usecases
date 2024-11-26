@@ -1,4 +1,5 @@
 from prettytable import PrettyTable
+import os
 
 def flatten_metrics(metrics, parent_key='', sep='_'):
     """
@@ -21,7 +22,7 @@ def flatten_metrics(metrics, parent_key='', sep='_'):
             items.append((new_key, v))
     return dict(items)
 
-def print_sr_improvement(metrics):
+def print_sr_improvement(metrics,save_to_txt=False):
     """
     Prints a table showing SR metric "improvement" over LR and "loss" over HR.
     
@@ -48,8 +49,15 @@ def print_sr_improvement(metrics):
             loss = sr_metrics[metric] - hr_metrics.get(metric, 0)
             table.add_row([metric, f"{improvement:.4f}", f"{loss:.4f}"])
     
-    # Print the table
+    # Print the table, save if wanted
     print(table)
+    
+    # create folder if necessary
+    if not os.path.exists("results"):
+        os.makedirs("results")
+    if save_to_txt!=False:
+        with open('results/tabular_results.txt', 'w') as f:
+            f.write(str(table))
 
 
 if __name__ == "__main__":
