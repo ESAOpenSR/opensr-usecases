@@ -158,11 +158,11 @@ class Validator:
         self.metrics[pred_type] = averaged_metrics
         
         if create_images:
-            from opensr_usecases.utils.create_images import create_images
-            self.image_dict[pred_type] = create_images(dataloader,model,pred_type)
+            from opensr_usecases.utils.create_and_save_images import create_images
+            self.image_dict[pred_type] = create_images(dataloader,model,device=self.device)
             
     def save_pred_images(self,output_path):
-        from opensr_usecases.utils.create_images import save_images
+        from opensr_usecases.utils.create_and_save_images import save_images
         os.makedirs("results", exist_ok=True)
         save_images(self.image_dict,output_path)
 

@@ -70,7 +70,7 @@ def save_images(image_dict, save_dir="results/example_images"):
         print(f"Saved: {save_path}")
      
 
-def create_images(dataloader,model,pred_type):
+def create_images(dataloader,model,device="cpu"):
     images,targets,outputs = [],[],[]
     
     num_images = 10
@@ -80,5 +80,5 @@ def create_images(dataloader,model,pred_type):
             c=c+1
             images.append(im_)
             targets.append(tgt_)
-            outputs.append(model(im_.unsqueeze(0)).squeeze(0))
+            outputs.append(model(im_.unsqueeze(0).to(device)).squeeze(0))
     return({"image":images,"GT":targets,"pred":outputs})
