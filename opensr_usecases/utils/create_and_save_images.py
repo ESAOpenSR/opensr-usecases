@@ -55,7 +55,10 @@ def save_images(image_dict, save_dir="results/example_images"):
     for type in ["HR", "SR", "LR"]:
         assert type in image_dict.keys(), f"Key {type} not found in image_dict. Need to run analysis with image saving enabled."
     
-    gts = image_dict["HR"]["GT"]
+    # extract images
+    mask_hr = image_dict["HR"]["GT"]
+    mask_lr = image_dict["LR"]["GT"]
+    mask_sr = image_dict["SR"]["GT"]
     images_sr = image_dict["SR"]["image"]
     images_lr = image_dict["LR"]["image"]
     images_hr = image_dict["HR"]["image"]
@@ -63,7 +66,7 @@ def save_images(image_dict, save_dir="results/example_images"):
     preds_lr = image_dict["LR"]["pred"]
     preds_hr = image_dict["HR"]["pred"]
 
-    num_examples = len(gts)
+    num_examples = len(images_sr)
     
     # Ensure the output directory exists
     os.makedirs(save_dir, exist_ok=True)
@@ -86,25 +89,25 @@ def save_images(image_dict, save_dir="results/example_images"):
                                       fontsize=14, ha="right", va="center", rotation=0)
 
         # Row 1: HR
-        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0).cpu().numpy())
+        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
         axes[0, 0].axis("off")
-        axes[0, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
         axes[0, 2].imshow(preds_hr[i].detach().cpu().numpy()[0], cmap="gray")
         axes[0, 2].axis("off")
 
         # Row 2: LR
-        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0).cpu().numpy())
+        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
         axes[1, 0].axis("off")
-        axes[1, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
         axes[1, 1].axis("off")
         axes[1, 2].imshow(preds_lr[i].detach().cpu().numpy()[0], cmap="gray")
         axes[1, 2].axis("off")
 
         # Row 3: SR
-        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0).cpu().numpy())
+        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
         axes[2, 0].axis("off")
-        axes[2, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
         axes[2, 2].imshow(preds_sr[i].detach().cpu().numpy()[0], cmap="gray")
         axes[2, 2].axis("off")
