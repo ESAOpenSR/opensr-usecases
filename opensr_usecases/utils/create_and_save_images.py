@@ -89,7 +89,7 @@ def save_images(image_dict, save_dir="results/example_images"):
                                       fontsize=14, ha="right", va="center", rotation=0)
 
         # Row 1: HR
-        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
+        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
         axes[0, 0].axis("off")
         axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
@@ -97,7 +97,7 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[0, 2].axis("off")
 
         # Row 2: LR
-        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
+        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
         axes[1, 0].axis("off")
         axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
         axes[1, 1].axis("off")
@@ -105,7 +105,7 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[1, 2].axis("off")
 
         # Row 3: SR
-        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0)[:3,:,:].cpu().numpy())
+        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
         axes[2, 0].axis("off")
         axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
