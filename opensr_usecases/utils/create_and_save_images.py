@@ -3,6 +3,54 @@ import os
 
 
 def save_images(image_dict, save_dir="results/example_images"):
+    """
+    Generates and saves visual comparisons of input images, ground truth masks, 
+    and predicted masks for high-resolution (HR), low-resolution (LR), and 
+    super-resolution (SR) images.
+
+    Parameters:
+    - image_dict (dict): A dictionary containing the following keys:
+        - "HR" (dict): Data related to high-resolution (HR) images.
+            - "image" (list of torch.Tensor): Input HR images.
+            - "GT" (list of torch.Tensor): Ground truth masks.
+            - "pred" (list of torch.Tensor): Predicted masks for HR images.
+        - "LR" (dict): Data related to low-resolution (LR) images.
+            - "image" (list of torch.Tensor): Input LR images.
+            - "pred" (list of torch.Tensor): Predicted masks for LR images.
+        - "SR" (dict): Data related to super-resolution (SR) images.
+            - "image" (list of torch.Tensor): Input SR images.
+            - "pred" (list of torch.Tensor): Predicted masks for SR images.
+    - save_dir (str, optional): The directory where the output images will be saved.
+      Default is "results/example_images".
+
+    Returns:
+    None
+
+    Saves:
+    - For each example in `image_dict`, a 3x3 grid visualization is created and saved
+      as an image file in `save_dir`.
+        - Columns:
+            1. Input Image
+            2. Ground Truth Mask (GT)
+            3. Predicted Mask
+        - Rows:
+            1. HR (High Resolution)
+            2. LR (Low Resolution)
+            3. SR (Super Resolution)
+
+    Example:
+    --------
+    image_dict = {
+        "HR": {"image": [...], "GT": [...], "pred": [...]},
+        "LR": {"image": [...], "pred": [...]},
+        "SR": {"image": [...], "pred": [...]}
+    }
+    save_images(image_dict, save_dir="results/example_images")
+    
+    This will save individual image comparison plots for each example in the specified directory.
+    """
+    
+    
     for type in ["HR", "SR", "LR"]:
         assert type in image_dict.keys(), f"Key {type} not found in image_dict. Need to run analysis with image saving enabled."
     
@@ -70,10 +118,26 @@ def save_images(image_dict, save_dir="results/example_images"):
         print(f"Saved: {save_path}")
      
 
-def create_images(dataloader,model,device="cpu"):
+def create_images(dataloader,model,device="cpu",num_images=10):
+    """
+    Processes a PyTorch DataLoader to generate images, ground truth targets, 
+    and model predictions. It is useful for visualizing and analyzing model outputs.
+
+    Parameters:
+    - dataloader (torch.utils.data.DataLoader): DataLoader providing batches of images and targets.
+    - model (torch.nn.Module): The trained PyTorch model used for generating predictions.
+    - device (str, optional): The device to use for inference (default: "cpu").
+    - num_images (int, optional): The maximum number of images to process (default: 10).
+
+    Returns:
+    dict: A dictionary containing:
+        - "image" (list of torch.Tensor): Processed input images.
+        - "GT" (list of torch.Tensor): Ground truth targets corresponding to the input images.
+        - "pred" (list of torch.Tensor): Model predictions for the input images.
+    """
+    
     images,targets,outputs = [],[],[]
     
-    num_images = 10
     c=0
     for im,tgt in dataloader:
         for im_,tgt_ in zip(im,tgt):
