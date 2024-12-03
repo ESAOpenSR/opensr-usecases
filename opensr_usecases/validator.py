@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import io
-
+import os
 from tqdm import tqdm
 
 # local
@@ -61,6 +61,7 @@ class Validator:
         # Initialize an empty dictionary to store metrics for various prediction types (LR, HR, SR)
         self.metrics = {}
         self.mAP_metrics = {}
+        self.image_dict = {}
 
     def print_raw_metrics(self):
         """
@@ -72,6 +73,9 @@ class Validator:
             print(k, "\n", self.metrics[k], "\n")
 
     def print_sr_improvement(self, save_to_txt=False):
+        if save_to_txt:
+            import os
+            os.makedirs("results", exist_ok=True)
         from .utils.pretty_print_metrics import print_sr_improvement
 
         self.print_sr_improvement = print_sr_improvement(self.metrics,save_to_txt)
@@ -86,7 +90,7 @@ class Validator:
         else:
             return self.metrics
 
-    def calculate_masks_metrics(self, dataloader, model, pred_type, threshold=0.75):
+    def calculate_masks_metrics(self, dataloader, model, pred_type, threshold=0.75,create_images=True):
         """
         Predicts masks for a given dataset using the provided model and computes relevant metrics.
 
@@ -152,6 +156,15 @@ class Validator:
 
         # Store the averaged metrics for the specified prediction type
         self.metrics[pred_type] = averaged_metrics
+        
+        if create_images:
+            from opensr_usecases.utils.create_images import create_images
+            self.image_dict[pred_type] = create_images(dataloader,model,pred_type)
+            
+    def save_pred_images(self,output_path):
+        from opensr_usecases.utils.create_images import save_images
+        os.makedirs("results", exist_ok=True)
+        save_images(self.image_dict,output_path)
 
     def get_mAP_curve(self, dataloader, model, pred_type="LR", amount_batches=50):
         model = model.eval().to(self.device)

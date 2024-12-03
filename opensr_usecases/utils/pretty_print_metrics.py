@@ -52,12 +52,10 @@ def print_sr_improvement(metrics,save_to_txt=False):
     # Print the table, save if wanted
     print(table)
     
-    # create folder if necessary
-    if not os.path.exists("results"):
-        os.makedirs("results")
     if save_to_txt!=False:
         with open('results/tabular_results.txt', 'w') as f:
             f.write(str(table))
+        print("Results saved to txt at: results/tabular_results.txt")
 
 
 if __name__ == "__main__":

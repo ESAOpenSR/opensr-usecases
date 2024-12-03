@@ -5,7 +5,7 @@ import random
 import matplotlib.pyplot as plt
 
 class PlaceholderDataset(Dataset):
-    def __init__(self, num_images=100,phase="test", image_type="lr"):
+    def __init__(self, num_images=10,phase="test", image_type="lr"):
         self.height = 512
         self.width = 512
         self.num_images = num_images

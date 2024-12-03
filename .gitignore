@@ -3,6 +3,7 @@ instructions.txt
 playground.py
 opensr_usecases/data/dataset/
 *.zip
+temp/
 
 # Python specific
 *.py[cod]

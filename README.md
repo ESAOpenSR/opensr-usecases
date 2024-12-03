@@ -124,6 +124,9 @@ val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10
 mAP_plot = val_obj.plot_mAP_curve()
 mAP_plot.save("resources/mAP_plot.png")
 
+# get Example images
+val_obj.return_pred_images(output_path="results/example_images")
+
 ```
 
 4. **Debugging**
@@ -136,9 +139,10 @@ validator = Validator(device="cuda", debugging=True)
 - **calculate_masks_metrics(dataloader, model, pred_type)**: Predicts masks using the provided model and computes relevant segmentation metrics.
 - **return_raw_metrics()**: Returns the raw metrics stored in the object.
 - **print_raw_metrics()**: Prints the raw metrics stored in the object.
-- **print_sr_improvement()**: Prints a table showing SR metric improvement over LR and loss over HR.
+- **print_sr_improvement(save_to_txt=True)**: Prints a table showing SR metric improvement over LR and loss over HR. Optionally save to txt into "results" folder
 - **get_mAP_curve()**: Computes and stores the mean Average Precision (mAP) curve over multiple thresholds for a given model and dataset across a specified number of batches.
 - **plot_mAP_curve()**: Plots the mAP curve for the stored prediction types and returns it as a PIL.Image.
+- **return_pred_images()**: Saves Examples of LR,SR,HR images, their ground truths and predictions to pngs for visual validation.
 
 ## Example Output
 ### Impriovement Statistics
@@ -161,7 +165,10 @@ The tool generates a table comparing SR metric improvement over LR and loss over
 +----------------------------------+---------------------------+---------------------------+
 ```
 ### mAP Curve for Detected Objects
-![mAP Curve](resources/mAP_plot.png?raw=true)
+![mAP Curve](results/mAP_plot.png?raw=true)
+
+### mAP Curve for Detected Objects
+![example images](results/example_images/example_1.png?raw=true)
 
 ## Results and Analysis
 At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models. If required, you will also see a mAP curve for each data type prediciton.
