@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import os
+import torch
 
 
 def save_images(image_dict, save_dir="results/example_images"):
@@ -144,5 +145,10 @@ def create_images(dataloader,model,device="cpu",num_images=10):
             c=c+1
             images.append(im_)
             targets.append(tgt_)
-            outputs.append(model(im_.unsqueeze(0).to(device)).squeeze(0))
+            with torch.no_grad():
+                outputs.append(model(im_.unsqueeze(0).to(device)).squeeze(0).detach().cpu())
+            if c>num_images:
+                break
+        if c>num_images:
+            break
     return({"image":images,"GT":targets,"pred":outputs})

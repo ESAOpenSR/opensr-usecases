@@ -13,5 +13,5 @@ class PlaceholderModel(nn.Module):
     
 if __name__ == "__main__":
     model = PlaceholderModel()
-    batch = torch.rand(41,4,512,512)
+    batch = torch.rand(1,4,512,512)
     model.predict(batch).shape
