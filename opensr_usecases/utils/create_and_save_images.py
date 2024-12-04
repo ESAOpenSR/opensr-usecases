@@ -2,6 +2,20 @@ import matplotlib.pyplot as plt
 import os
 import torch
 
+def minmax_stretch(image):
+    """
+    Applies min-max stretching to an image tensor.
+
+    Parameters:
+    - image (torch.Tensor): The input image tensor.
+
+    Returns:
+    torch.Tensor: The stretched image tensor.
+    """
+    image_min = image.min()
+    image_max = image.max()
+    return (image - image_min) / (image_max - image_min)
+
 
 def save_images(image_dict, save_dir="results/example_images"):
     """
@@ -89,7 +103,9 @@ def save_images(image_dict, save_dir="results/example_images"):
                                       fontsize=14, ha="right", va="center", rotation=0)
 
         # Row 1: HR
-        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
+        images_hr_ = images_hr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_hr_ = minmax_stretch(images_hr_)
+        axes[0, 0].imshow(images_hr_)
         axes[0, 0].axis("off")
         axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
@@ -99,7 +115,9 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[0, 2].axis("off")
 
         # Row 2: LR
-        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
+        images_lr_ = images_lr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_lr_ = minmax_stretch(images_lr_)
+        axes[1, 0].imshow(images_lr_)
         axes[1, 0].axis("off")
         axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
         axes[1, 1].axis("off")
@@ -109,7 +127,9 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[1, 2].axis("off")
 
         # Row 3: SR
-        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy())
+        images_sr_ = images_sr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_sr_ = minmax_stretch(images_sr_)
+        axes[2, 0].imshow(images_sr_)
         axes[2, 0].axis("off")
         axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
