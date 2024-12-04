@@ -94,8 +94,8 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
         preds_hr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
-        preds_hr_ = preds_hr_.permute(1, 2, 0).cpu().numpy()
-        axes[0, 2].imshow(preds_hr_[0], cmap="gray")
+        preds_hr_ = preds_hr_.cpu().numpy()[0]
+        axes[0, 2].imshow(preds_hr_, cmap="gray")
         axes[0, 2].axis("off")
 
         # Row 2: LR
@@ -104,8 +104,8 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
         axes[1, 1].axis("off")
         preds_lr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
-        preds_lr_ = preds_lr_.permute(1, 2, 0).cpu().numpy()
-        axes[1, 2].imshow(preds_lr_[0], cmap="gray")
+        preds_lr_ = preds_lr_.cpu().numpy()[0]
+        axes[1, 2].imshow(preds_lr_, cmap="gray")
         axes[1, 2].axis("off")
 
         # Row 3: SR
@@ -114,8 +114,8 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
         preds_sr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
-        preds_sr_ = preds_sr_.permute(1, 2, 0).cpu().numpy()
-        axes[2, 2].imshow(preds_sr_[0], cmap="gray")
+        preds_sr_ = preds_sr_.cpu().numpy()[0]
+        axes[2, 2].imshow(preds_sr_, cmap="gray")
         axes[2, 2].axis("off")
 
         # Adjust layout for tightness
