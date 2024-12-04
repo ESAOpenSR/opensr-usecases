@@ -117,7 +117,7 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[0, 0].axis("off")
         axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
-        preds_hr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
+        preds_hr_ = torch.where(preds_hr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
         preds_hr_ = preds_hr_.cpu().numpy()[0]
         axes[0, 2].imshow(preds_hr_, cmap="gray")
         axes[0, 2].axis("off")
@@ -141,7 +141,7 @@ def save_images(image_dict, save_dir="results/example_images"):
         axes[2, 0].axis("off")
         axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
-        preds_sr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
+        preds_sr_ = torch.where(preds_sr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
         preds_sr_ = preds_sr_.cpu().numpy()[0]
         axes[2, 2].imshow(preds_sr_, cmap="gray")
         axes[2, 2].axis("off")
