@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import os
 import torch
+import numpy as np
 
 def minmax_stretch(image):
     """
@@ -15,6 +16,13 @@ def minmax_stretch(image):
     image_min = image.min()
     image_max = image.max()
     return (image - image_min) / (image_max - image_min)
+
+def minmax_percentile(img,perc=2):
+    lower = np.percentile(img,perc)
+    upper = np.percentile(img,100-perc)
+    img[img>upper] = upper
+    img[img<lower] = lower
+    return(img-np.min(img) ) / (np.max(img)-np.min(img))
 
 
 def save_images(image_dict, save_dir="results/example_images"):
@@ -104,7 +112,7 @@ def save_images(image_dict, save_dir="results/example_images"):
 
         # Row 1: HR
         images_hr_ = images_hr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
-        images_hr_ = minmax_stretch(images_hr_)
+        images_hr_ = minmax_percentile(images_hr_)
         axes[0, 0].imshow(images_hr_)
         axes[0, 0].axis("off")
         axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
@@ -116,7 +124,7 @@ def save_images(image_dict, save_dir="results/example_images"):
 
         # Row 2: LR
         images_lr_ = images_lr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
-        images_lr_ = minmax_stretch(images_lr_)
+        images_lr_ = minmax_percentile(images_lr_)
         axes[1, 0].imshow(images_lr_)
         axes[1, 0].axis("off")
         axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
@@ -128,7 +136,7 @@ def save_images(image_dict, save_dir="results/example_images"):
 
         # Row 3: SR
         images_sr_ = images_sr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
-        images_sr_ = minmax_stretch(images_sr_)
+        images_sr_ = minmax_percentile(images_sr_)
         axes[2, 0].imshow(images_sr_)
         axes[2, 0].axis("off")
         axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
