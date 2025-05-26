@@ -13,6 +13,7 @@ from opensr_usecases import Validator
 # Get data
 # Initialize the datasets - For LR,SR,HR
 from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
+# test git
 dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
 dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
 dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
