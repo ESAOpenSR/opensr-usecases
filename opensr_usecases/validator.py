@@ -26,23 +26,23 @@ class Validator:
         metrics (dict): A dictionary to store averaged evaluation metrics for different model types (e.g., LR, HR, SR).
     """
 
-    def __init__(self, device="cpu", debugging=False):
+    def __init__(self, output_folder="data_folder", device="cpu", debugging=False):
         """
         Initializes the `Validator` class by setting the device, debugging flag, loading the object
         detection analyzer, and preparing a metrics dictionary to store evaluation results.
 
         Args:
+            output_folder (str): The folder where the output predictions and metadata will be saved.
             device (str, optional): The device to use for computation ("cpu" or "cuda"). Defaults to "cpu".
             debugging (bool, optional): If set to True, will limit iterations for debugging purposes. Defaults to False.
 
         Attributes:
             device (str): Device to be used for model evaluation (e.g., "cuda" or "cpu").
             debugging (bool): Flag indicating if debugging mode is active.
-            object_analyzer (ObjectDetectionAnalyzer): Initializes the object detection analyzer for use in metrics computation.
-            metrics (dict): Initializes an empty dictionary to hold evaluation metrics for different prediction types.
         """
         self.device = device
         self.debugging = debugging
+        self.output_folder = output_folder
         if self.debugging:
             print(
                 "Warning: Debugging Mode is active. Only 2 Batches will be processed."
@@ -61,9 +61,9 @@ class Validator:
         ], "prediction type must be in ['LR', 'HR', 'SR']"
 
 
-        if load_pkl and os.path.exists("data_folder/metadata.pkl"):
+        if load_pkl and os.path.exists(os.path.join(self.output_folder,"metadata.pkl")):
             # Load metadata from pickle file - Fast
-            self.metadata = pd.read_pickle("data_folder/metadata.pkl")
+            self.metadata = pd.read_pickle(os.path.join(self.output_folder,"metadata.pkl"))
         else:
             # Save predictions to disk
             self.save_predictions(dataloader, model, pred_type)
@@ -72,15 +72,15 @@ class Validator:
 
         # 1. CHECK AND CREATE DIRECTORIES ----------------------------------------------------------------------------
         # Check if general output_res directory exists, if not create it
-        if not os.path.exists("data_folder"):
-            os.makedirs("data_folder")
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
 
         # create a directory to save the predicted masks
-        output_dir = f"data_folder/{pred_type}"
+        output_dir = os.path.join(self.output_folder, pred_type)
         os.makedirs(output_dir, exist_ok=True)
 
         # create GT_path
-        gt_dir = os.path.join("data_folder", "GT")
+        gt_dir = os.path.join(self.output_folder, "GT")
         os.makedirs(gt_dir, exist_ok=True)
 
         # 1.1 Create Lists
@@ -165,8 +165,50 @@ class Validator:
 
         # If all types have been processed, save the metadata
         if "pred_path_LR" in self.metadata.columns and "pred_path_HR" in self.metadata.columns and "pred_path_SR" in self.metadata.columns:
-            self.metadata.to_pickle("data_folder/metadata.pkl")
-            print("Metadata saved to data_folder/metadata.pkl")
+            self.metadata.to_pickle(os.path.join(self.output_folder, "metadata.pkl"))
+            print(f"Metadata saved to {os.path.join(self.output_folder, 'metadata.pkl')}")
+
+    def save_results_examples(self,num_examples=5):
+        """
+        Saves a few example images with their predicted masks and ground truth masks to disk.
+
+        Args:
+            num_examples (int): The number of example images to save.
+        """
+        # Ensure the output directory exists
+        output_dir = os.path.join(self.output_folder, "examples")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Iterate over the first few rows of the metadata DataFrame
+        for index, row in self.metadata.sample(num_examples, random_state=42).iterrows():
+            image_path = row[f"image_path_LR"]
+            pred_path = row[f"pred_path_LR"]
+            gt_path = row["gt_path"]
+
+            # Load the images and masks
+            image = np.load(image_path)["data"]
+            pred_mask = np.load(pred_path)["data"]
+            gt_mask = np.load(gt_path)["data"]
+
+            # Create a figure to display the results
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            axes[0].imshow(image)
+            axes[0].set_title("Input Image")
+            axes[0].axis("off")
+
+            axes[1].imshow(pred_mask, cmap="gray")
+            axes[1].set_title("Predicted Mask")
+            axes[1].axis("off")
+
+            axes[2].imshow(gt_mask, cmap="gray")
+            axes[2].set_title("Ground Truth Mask")
+            axes[2].axis("off")
+
+            # Save the figure
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, f"example_{index}.png"))
+            plt.close(fig)
+        print(f"Saved {num_examples} example images with Prediction and GT Masks to '{output_dir}'.")
 
 
     def calculate_segmentation_metrics(self, pred_type, threshold=0.75):
@@ -216,8 +258,8 @@ class Validator:
             save_csv (bool): If True, saves the segmentation metrics DataFrame to a CSV file.
         """
         if save_csv:
-            os.makedirs("data_folder/results", exist_ok=True)
-            self.segmentation_metrics.to_csv("data_folder/results/segmentation_metrics.csv")
+            os.makedirs(os.path.join(self.output_folder, "results"), exist_ok=True)
+            self.segmentation_metrics.to_csv(os.path.join(self.output_folder, "results", "segmentation_metrics.csv"))
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
         print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
@@ -253,5 +295,5 @@ class Validator:
         print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
 
         if save_csv:
-            os.makedirs("data_folder/results", exist_ok=True)
-            comparison_df.to_csv("data_folder/results/segmentation_improvements.csv")
+            os.makedirs(os.path.join(self.output_folder, "results"), exist_ok=True)
+            comparison_df.to_csv(os.path.join(self.output_folder, "results", "segmentation_improvements.csv"))
