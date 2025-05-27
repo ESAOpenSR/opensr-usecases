@@ -1,12 +1,6 @@
 # 0. Imports ----------------------------------------------------------------------------------------
-# global
-import torch
 from torch.utils.data import DataLoader
-from PIL import Image
-from numpy import np
-import os
 from tqdm import tqdm
-# local
 from opensr_usecases import Validator
 
 
@@ -51,12 +45,13 @@ val_obj.save_results_examples(num_examples=5)
 # 3.3.3.3 Print Segmentation Metrics to console and save to CSV
 val_obj.print_segmentation_metrics(save_csv=True)
 val_obj.print_segmentation_improvements(save_csv=True)
+val_obj.plot_threshold_curves(metric="IoU") # - TODO: Implement this in Validator class
 
 # 3.3.2 Calculate Object Detection Metrics based on predictions
-val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.75)
-val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.75)
-val_obj.calculate_object_detection_metrics(pred_type="SR", threshold=0.75)
+#val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.75)
+#val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.75)
+#val_obj.calculate_object_detection_metrics(pred_type="SR", threshold=0.75)
 # 3.2.2.1 Print Object Detection Metrics to console and save to CSV
-val_obj.print_object_detection_metrics(save_csv=True)
-val_obj.print_object_detection_improvements(save_csv=True)
+#val_obj.print_object_detection_metrics(save_csv=True)
+#val_obj.print_object_detection_improvements(save_csv=True)
 

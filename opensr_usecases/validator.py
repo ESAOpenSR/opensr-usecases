@@ -48,6 +48,7 @@ class Validator:
         # This holds the path info and later on the metrics
         self.metadata = pd.DataFrame()
 
+
     def run_predictions(self, dataloader, model, pred_type, load_pkl=False):
 
         # Ensure that the prediction type is valid
@@ -64,6 +65,7 @@ class Validator:
         else:
             # Save predictions to disk
             self.save_predictions(dataloader, model, pred_type)
+
 
     def save_predictions(self, dataloader, model, pred_type):
 
@@ -165,47 +167,59 @@ class Validator:
             self.metadata.to_pickle(os.path.join(self.output_folder, "metadata.pkl"))
             print(f"Metadata saved to {os.path.join(self.output_folder, 'metadata.pkl')}")
 
-    def save_results_examples(self,num_examples=5):
-        """
-        Saves a few example images with their predicted masks and ground truth masks to disk.
 
-        Args:
-            num_examples (int): The number of example images to save.
+    def plot_threshold_curves(self, metric="IoU"): # TODO: Implement this in Validator class
+        pass
+
+    def save_results_examples(self, num_examples=5):
         """
-        # Ensure the output directory exists
+        Saves a few example images with their predicted masks and ground truth masks (LR, SR, HR) to disk.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
         output_dir = os.path.join(self.output_folder, "examples")
         os.makedirs(output_dir, exist_ok=True)
 
-        # Iterate over the first few rows of the metadata DataFrame
-        for index, row in self.metadata.sample(num_examples, random_state=42).iterrows():
-            image_path = row[f"image_path_LR"]
-            pred_path = row[f"pred_path_LR"]
-            gt_path = row["gt_path"]
+        # Sample random image IDs (assumes unique image_id per row)
+        sampled_rows = self.metadata.sample(num_examples, random_state=42)
 
-            # Load the images and masks
-            image = np.load(image_path)["data"]
-            pred_mask = np.load(pred_path)["data"]
-            gt_mask = np.load(gt_path)["data"]
+        for index, row in sampled_rows.iterrows():
+            fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(12, 12), dpi=150)
+            pred_types = ["LR", "SR", "HR"]
 
-            # Create a figure to display the results
-            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-            axes[0].imshow(image)
-            axes[0].set_title("Input Image")
-            axes[0].axis("off")
+            for i, pred_type in enumerate(pred_types):
+                try:
+                    image = np.load(row[f"image_path_{pred_type}"])["data"][:,:,:3]
+                    pred_mask = np.load(row[f"pred_path_{pred_type}"])["data"]
+                    gt_mask = np.load(row["gt_path"])["data"]
 
-            axes[1].imshow(pred_mask, cmap="gray")
-            axes[1].set_title("Predicted Mask")
-            axes[1].axis("off")
+                    # Min-max stretch the image
+                    image = (image - np.min(image)) / (np.max(image) - np.min(image))
 
-            axes[2].imshow(gt_mask, cmap="gray")
-            axes[2].set_title("Ground Truth Mask")
-            axes[2].axis("off")
+                    # Plot: image, pred, gt
+                    axes[i, 0].imshow(image)
+                    axes[i, 0].set_title(f"{pred_type} Image")
+                    #axes[i, 0].axis("off")
 
-            # Save the figure
-            plt.tight_layout()
+                    axes[i, 1].imshow(pred_mask, cmap="gray")
+                    axes[i, 1].set_title(f"{pred_type} Prediction")
+                    #axes[i, 1].axis("off")
+
+                    axes[i, 2].imshow(gt_mask, cmap="gray")
+                    axes[i, 2].set_title("Ground Truth")
+                    #axes[i, 2].axis("off")
+
+                except KeyError as e:
+                    print(f"Missing data for {pred_type} in row {index}: {e}")
+                    continue
+
+            plt.tight_layout(pad=1)
             plt.savefig(os.path.join(output_dir, f"example_{index}.png"))
             plt.close(fig)
-        print(f"Saved {num_examples} example images with Prediction and GT Masks to '{output_dir}'.")
+
+        print(f"Saved {num_examples} comparison images to '{output_dir}'.")
 
 
     def calculate_segmentation_metrics(self, pred_type, threshold=0.75):
@@ -246,6 +260,7 @@ class Validator:
         else:
             self.segmentation_metrics = pd.concat([self.segmentation_metrics, metrics_df])
 
+    
     def print_segmentation_metrics(self,save_csv=False):
         """
         Prints the segmentation metrics in a tabular format.
@@ -294,3 +309,5 @@ class Validator:
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "results"), exist_ok=True)
             comparison_df.to_csv(os.path.join(self.output_folder, "results", "segmentation_improvements.csv"))
+
+
