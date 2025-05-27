@@ -50,9 +50,10 @@ val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10
 
 # plot mAP curve
 mAP_plot = val_obj.plot_mAP_curve()
-mAP_plot.save("resources/mAP_plot.png")
+mAP_plot.save("results/mAP_plot.png")
 
 # get Example images
 val_obj.save_pred_images(output_path="results/example_images")
 
-            
+
+

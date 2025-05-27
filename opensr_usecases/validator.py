@@ -290,7 +290,7 @@ class Validator:
         model = model.eval().to(self.device)
 
         found_percentages = []
-        thresholds = np.linspace(0, 1, 50)
+        thresholds = np.linspace(0, 1, 25)
 
         percentage_batch = []
 
