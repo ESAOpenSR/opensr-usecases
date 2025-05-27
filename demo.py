@@ -43,7 +43,8 @@ val_obj.calculate_segmentation_metrics(pred_type="LR", threshold=0.75)
 val_obj.calculate_segmentation_metrics(pred_type="HR", threshold=0.75)
 val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
 # 3.3.1 Print Segmentation Metrics to console
-val_obj.print_segmentation_metrics()
+val_obj.print_segmentation_metrics(save_csv=True)
+val_obj.print_segmentation_improvements(save_csv=True)
 
 # 3.4 Calculate Object Detection Metrics based on predictions
 val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.75)

@@ -207,16 +207,51 @@ class Validator:
         else:
             self.segmentation_metrics = pd.concat([self.segmentation_metrics, metrics_df])
 
-    def print_segmentation_metrics(self):
+    def print_segmentation_metrics(self,save_csv=False):
         """
         Prints the segmentation metrics in a tabular format.
+        This method displays the segmentation metrics calculated for different prediction types
+        (LR, HR, SR) in a structured DataFrame format.
+        Args:
+            save_csv (bool): If True, saves the segmentation metrics DataFrame to a CSV file.
         """
-        if hasattr(self, "segmentation_metrics") and self.segmentation_metrics is not None:
-            from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
-            print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
-        else:
-            print("No segmentation metrics available. Please run calculate_segmentation_metrics first.")
+        if save_csv:
+            os.makedirs("data_folder/results", exist_ok=True)
+            self.segmentation_metrics.to_csv("data_folder/results/segmentation_metrics.csv")
+
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
 
 
+    def print_segmentation_improvements(self, save_csv=False):
+        """
+        Prints the improvements in segmentation metrics between LR, SR, and HR predictions.
+        This method calculates the differences in metrics between LR, SR, and HR predictions
+        and displays them in a tabular format.
+        Args:
+            save_csv (bool): If True, saves the comparison DataFrame to a CSV file.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
 
+        df = self.segmentation_metrics
+        assert "SR" in df.index, "SR row not found"
+        assert "LR" in df.index, "LR row not found"
+        assert "HR" in df.index, "HR row not found"
 
+        sr_row = df.loc["SR"]
+        lr_diff = df.loc["LR"] - sr_row
+        hr_diff = df.loc["HR"] - sr_row
+
+        # Build comparison DataFrame
+        comparison_df = pd.DataFrame({
+            "LR → SR Δ": lr_diff,
+            "SR": sr_row,
+            "HR → SR Δ": hr_diff
+        })
+
+        # Transpose and Print
+        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+
+        if save_csv:
+            os.makedirs("data_folder/results", exist_ok=True)
+            comparison_df.to_csv("data_folder/results/segmentation_improvements.csv")
