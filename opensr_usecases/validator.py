@@ -6,9 +6,6 @@ import pandas as pd
 import os
 from tqdm import tqdm
 
-# local
-from opensr_usecases.utils.utils import compute_average_metrics
-
 
 class Validator:
     """
@@ -223,7 +220,7 @@ class Validator:
         """
         
         from opensr_usecases.segmentation.segmentation_utils import segmentation_metrics
-        from opensr_usecases.utils.utils import compute_average_metrics
+        from opensr_usecases.utils.dict_average import compute_average_metrics
 
         # iterate over dataframe
         metrics_list = []
