@@ -21,6 +21,7 @@ dataset_lr = TIFDataset(
             target_path=target_path,
             phase="test",
             image_type='sr',
+            return_image_id=True,
         )
 
 dataset_hr = TIFDataset(
@@ -29,6 +30,7 @@ dataset_hr = TIFDataset(
             target_path=target_path,
             phase="test",
             image_type='hr',
+            return_image_id=True,
         )
 
 dataset_sr = TIFDataset(
@@ -37,6 +39,7 @@ dataset_sr = TIFDataset(
             target_path=target_path,
             phase="test",
             image_type='sr_4band',
+            return_image_id=True,
         )
 
 # 1.2 Create DataLoaders
@@ -73,7 +76,7 @@ val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
 val_obj.calculate_segmentation_metrics(pred_type="LR", threshold=0.75)
 val_obj.calculate_segmentation_metrics(pred_type="HR", threshold=0.75)
 val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
-    
+
 # 3.3.2 Calculate Object Detection Metrics based on predictions
 val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.50)
 val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.50)

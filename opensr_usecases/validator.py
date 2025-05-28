@@ -176,7 +176,11 @@ class Validator:
                     desc=f"Predicting masks and calculating metrics for {pred_type}",
                     total=total)):
                 # Unpack the batch (images and ground truth masks)
-                images, gt_masks = batch
+                if dataloader.dataset.return_image_id:
+                    images, gt_masks, batch_image_ids = batch
+                else:
+                    images, gt_masks = batch
+                    batch_image_ids = [global_id+i for i in range(len(images))]
 
                 # Move images to Device
                 images = images.to(self.device)
@@ -184,8 +188,12 @@ class Validator:
                 # Forward pass through the model to predict masks
                 pred_masks = model(images)
 
-                for i, (im, pred, gt) in enumerate(zip(images, pred_masks, gt_masks)):
+                for i, (im, pred, gt, image_id) in enumerate(zip(images, pred_masks, gt_masks, batch_image_ids)):
                     global_id += 1
+
+                    # add proper image id
+                    if dataloader.dataset.return_image_id:
+                        image_id = f'{image_id:05d}'
 
                     # Ensure 2D mask shape
                     pred = np.squeeze(pred.cpu().numpy())
@@ -196,21 +204,21 @@ class Validator:
                     im_np = np.transpose(im_np[:3,:,:], (1, 2, 0))
 
                     # Save prediction
-                    pred_out_name = os.path.join(output_dir, f"pred_{global_id}.npz")
+                    pred_out_name = os.path.join(output_dir, f"pred_{image_id}.npz")
                     np.savez_compressed(pred_out_name, data=pred)
 
                     # Save GT - does this for each type, but doesnt matter
-                    gt_out_name = os.path.join(gt_dir, f"gt_{global_id}.npz")
+                    gt_out_name = os.path.join(gt_dir, f"gt_{image_id}.npz")
                     # if gt doesnt exist
                     if not os.path.exists(gt_out_name):
                         np.savez_compressed(gt_out_name, data=gt)
 
                     # Save input image
-                    im_out_name = os.path.join(output_dir, f"image_{global_id}.npz")
+                    im_out_name = os.path.join(output_dir, f"image_{image_id}.npz")
                     np.savez_compressed(im_out_name, data=im_np)
 
                     # Append paths and IDs to lists for later use
-                    image_ids.append(global_id)
+                    image_ids.append(image_id)
                     gt_paths.append(gt_out_name)
                     image_paths.append(im_out_name)
                     pred_paths.append(pred_out_name)

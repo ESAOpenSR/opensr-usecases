@@ -24,6 +24,7 @@ class TIFDataset(Dataset):
         mask_class=41,
         band_indices=None,
         bands=4,
+        return_image_id=False,
     ):
         # own, defintely needed
         assert Path(data_table).exists()
@@ -34,6 +35,7 @@ class TIFDataset(Dataset):
         self.image_type = image_type  # Either LR od HR
         self.mask_class = mask_class
         self.phase = phase
+        self.return_image_id = return_image_id
         # maybe, dont want to do 3band stuff
         self.bands = bands
 
@@ -93,5 +95,8 @@ class TIFDataset(Dataset):
         else:
             raise 'No transform selected: apply at least a normalization'
 
-        return img_trafo, mask_trafo.unsqueeze(0)  # Add channel dimension to mask
+        if self.return_image_id:
+            return img_trafo, mask_trafo.unsqueeze(0), self.data.loc[idx, 'id']
+        else:
+            return img_trafo, mask_trafo.unsqueeze(0)  # Add channel dimension to mask
 
