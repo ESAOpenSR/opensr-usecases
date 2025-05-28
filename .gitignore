@@ -7,6 +7,8 @@ playground.py
 opensr_usecases/data/dataset/
 *.zip
 temp/
+data_folder/
+data_folder/*
 
 # Python specific
 *.py[cod]

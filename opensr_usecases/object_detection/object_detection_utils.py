@@ -7,6 +7,7 @@ import numpy as np
 from scipy.ndimage import label
 import torch
 
+
 def compute_avg_object_prediction_score(binary_masks, predicted_masks):
     """
     Calculates the overall average prediction score for all objects across a batch of binary masks.
@@ -54,53 +55,38 @@ def compute_avg_object_prediction_score(binary_masks, predicted_masks):
     return overall_avg
 
 
-def compute_found_objects_percentage(binary_masks, predicted_masks, confidence_threshold=0.5):
+
+
+def compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=0.5):
     """
-    Calculates the percentage of objects found based on a confidence threshold.
+    Calculates the percentage of ground truth objects that are considered 'found' based on the predicted mask.
+
+    An object is considered 'found' if the average predicted score within its region is above the confidence threshold.
 
     Args:
-        binary_masks (numpy.ndarray): A batch of binary masks of shape (batch_size, height, width), 
-                                      where each distinct object is represented as a connected region 
-                                      of 1s, and the background is 0.
-        predicted_masks (numpy.ndarray): A batch of predicted masks of shape (batch_size, height, width), 
-                                         where each pixel value represents the prediction score for that pixel.
-        confidence_threshold (float): The confidence threshold above which an object is considered "found".
+        gt_mask (np.ndarray): Binary ground truth mask of shape (H, W) where objects are 1 and background is 0.
+        pred_mask (np.ndarray): Predicted score mask of shape (H, W) with values in [0, 1].
+        confidence_threshold (float): Threshold above which an object is considered found.
 
     Returns:
-        float: The percentage of objects found with an average prediction score above the confidence threshold.
+        float: Percentage of objects found (0–100).
     """
-    binary_masks = torch.tensor(binary_masks) if not torch.is_tensor(binary_masks) else binary_masks
-    predicted_masks = torch.tensor(predicted_masks) if not torch.is_tensor(predicted_masks) else predicted_masks
-    if binary_masks.ndim == 2 and predicted_masks.ndim == 2:
-        predicted_masks = predicted_masks.unsqueeze(0)
-        binary_masks = binary_masks.unsqueeze(0)
-    binary_masks = binary_masks.cpu().numpy()
-    predicted_masks = predicted_masks.cpu().numpy()
-    
-    total_objects = 0
+    if gt_mask.ndim != 2 or pred_mask.ndim != 2:
+        raise ValueError("gt_mask and pred_mask must be 2D arrays")
+
+    labeled_mask, num_objects = label(gt_mask)
+    if num_objects == 0:
+        return 0.0
+
     found_objects = 0
-    
-    batch_size = binary_masks.shape[0]
-    
-    for i in range(batch_size):
-        binary_mask = binary_masks[i]
-        predicted_mask = predicted_masks[i]
-        
-        labeled_mask, num_objects = label(binary_mask)
-        total_objects += num_objects
-        
-        # Iterate over each object in the current mask
-        for object_id in range(1, num_objects + 1):
-            object_mask = (labeled_mask == object_id)
-            avg_value = predicted_mask[object_mask].mean()
-            
-            # Count objects that have an average score above the confidence threshold
-            if avg_value >= confidence_threshold:
-                found_objects += 1
-    
-    # Calculate the percentage of found objects
-    percentage_found = (found_objects / total_objects) * 100 if total_objects > 0 else 0
-    return percentage_found
+    for object_id in range(1, num_objects + 1):
+        object_region = labeled_mask == object_id
+        avg_score = pred_mask[object_region].mean()
+        if avg_score >= confidence_threshold:
+            found_objects += 1
+
+    return (found_objects / num_objects) * 100
+
 
 
 def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,threshold=None):
@@ -177,73 +163,5 @@ def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,th
             avg_scores_by_size[size_range] = None  # No objects in this size range
 
     return avg_scores_by_size
-
-def standard_metrics(binary_masks, predicted_masks, threshold=0.5):
-    """
-    Calculate binary segmentation metrics batch-wise.
-
-    Args:
-        binary_masks (numpy.ndarray): Ground truth binary masks (batch_size, height, width).
-        predicted_masks (numpy.ndarray): Predicted masks with probability scores (batch_size, height, width).
-        threshold (float): Threshold to binarize predicted masks (default is 0.5).
-
-    Returns:
-        dict: A dictionary containing batch-wise metrics (IoU, Dice, precision, recall, accuracy).
-    """
-    
-    # Binarize predicted masks based on the threshold
-    predicted_binary_masks = (predicted_masks >= threshold).astype(np.uint8)
-    
-    # Initialize accumulators for batch metrics
-    iou_accum = 0
-    dice_accum = 0
-    precision_accum = 0
-    recall_accum = 0
-    accuracy_accum = 0
-    batch_size = binary_masks.shape[0]
-    
-    for i in range(batch_size):
-        true_mask = binary_masks[i]
-        pred_mask = predicted_binary_masks[i]
-        
-        # Calculate true positives, false positives, false negatives, true negatives
-        tp = np.sum((true_mask == 1) & (pred_mask == 1))
-        fp = np.sum((true_mask == 0) & (pred_mask == 1))
-        fn = np.sum((true_mask == 1) & (pred_mask == 0))
-        tn = np.sum((true_mask == 0) & (pred_mask == 0))
-        
-        # Intersection over Union (IoU)
-        intersection = tp
-        union = tp + fp + fn
-        iou = intersection / union if union > 0 else 0
-        
-        # Dice coefficient (F1 Score)
-        dice = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0
-        
-        # Precision and Recall
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        
-        # Accuracy
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-        
-        # Accumulate metrics for each batch
-        iou_accum += iou
-        dice_accum += dice
-        precision_accum += precision
-        recall_accum += recall
-        accuracy_accum += accuracy
-    
-    # Compute the average of metrics across the batch
-    metrics = {
-        'IoU': iou_accum / batch_size,
-        'Dice': dice_accum / batch_size,
-        'Precision': precision_accum / batch_size,
-        'Recall': recall_accum / batch_size,
-        'Accuracy': accuracy_accum / batch_size
-    }
-    
-    return metrics
-
 
 

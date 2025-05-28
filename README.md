@@ -4,7 +4,7 @@ Welcome to the **Super-Resolution Model Validator** project! This tool is design
 
 ## Project Overview
 
-In this project, users can submit their own dataset and models to evaluate how well the models perform **object segmentation** across different resolutions of images. This tool calculates a range of segmentation metrics and averages them over the dataset, providing insights into how the **resolution** of the input images (LR, HR, SR) affects the ability of the models to correctly segment objects.
+In this project, users can submit their own dataset and models to evaluate how well the models perform object segmentation across different resolutions of images. This tool calculates a range of segmentation metrics and averages them over the dataset, providing insights into how the resolution of the input images (LR, HR, SR) affects the ability of the models to correctly segment objects.
 
 The main focus of the validation process is to understand how well objects (e.g., buildings, in the case of remote sensing) are identified, and how this identification accuracy changes based on the input data type (LR, HR, or SR).
 
@@ -39,10 +39,11 @@ In addition, the tool computes **custom object identification metrics**:
 
 - **Object Identification Percentage**: The percentage of objects that are correctly identified based on a given confidence threshold.
 - **Size-Based Identification**: Metrics showing how well objects are identified based on their size (e.g., small vs. large objects).
+- **Average Object Prediction Score**: An average of pixel predictions for each object
   
 ### Output
 
-The output of the tool is a set of averaged metrics for each resolution (LR, HR, SR). These results allow users to compare how well objects are segmented in different resolutions and understand how the use of **super-resolution** models impacts segmentation performance.
+The output of the tool is a set of averaged metrics for each resolution (LR, HR, SR). These results allow users to compare how well objects are segmented in different resolutions and understand how the use of super-resolution models impacts segmentation performance. Cached results are automatically reused if force_recalc=False to speed up analysis.
 
 ## Key Use Cases
 
@@ -60,11 +61,12 @@ The output of the tool is a set of averaged metrics for each resolution (LR, HR,
 
 ### Installation
 
+#### Option A: Cloning
 1. Clone this repository:
 
     ```bash
-    git clone https://github.com/your-repository/sr-segmentation-validator.git
-    cd sr-segmentation-validator
+    https://github.com/ESAOpenSR/opensr-usecases
+    cd opensr-usecases
     ```
 
 2. Install the required dependencies:
@@ -72,6 +74,11 @@ The output of the tool is a set of averaged metrics for each resolution (LR, HR,
     ```bash
     pip install -r requirements.txt
     ```
+#### Option B: PIP
+    ```bash
+    pip install opensr-usecases
+    ```
+
 
 ### Usage
 
@@ -80,53 +87,73 @@ To use this tool, you will need to follow these steps:
 1. **Prepare Your Dataset**: Ensure that your dataset includes the images and ground truth segmentation masks.
 2. **Define Your Models**: Provide models for LR, HR, and SR image segmentation. Each model should be capable of outputting a predicted mask for the input images.
 3. **Run the Validation**: Use the provided `Validator` class to run the validation process and compute the metrics.
+  
+It is advisable that you follow the steps outlined in the demo.py file.
 
 #### Example Code 
 
 ```python
-from opensr_usecases.models.placeholder_model import PlaceholderModel
-from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
+# 0. Imports ----------------------------------------------------------------------------------------
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from opensr_usecases import Validator
 
-# Initialize the datasets - For LR,SR,HR
+
+# 1. Get Data
+# 1.1 Get Datasets
+from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
 dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
 dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
 dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
 
-# Initialize dataloaders for each dataset
-dataloader_lr = DataLoader(dataset_lr, batch_size=12, shuffle=False)
-dataloader_hr = DataLoader(dataset_hr, batch_size=12, shuffle=False)
-dataloader_sr = DataLoader(dataset_sr, batch_size=12, shuffle=False)
+# 1.2 Create DataLoaders
+dataloader_lr = DataLoader(dataset_lr, batch_size=4, shuffle=True)
+dataloader_hr = DataLoader(dataset_hr, batch_size=4, shuffle=True)
+dataloader_sr = DataLoader(dataset_sr, batch_size=4, shuffle=True)
 
-# Initialize different models for LR, HR, and SR
+
+# 2. Get Models -----------------------------------------------------------------------------------------------------
+from opensr_usecases.models.placeholder_model import PlaceholderModel
 lr_model = PlaceholderModel()
 hr_model = PlaceholderModel()
 sr_model = PlaceholderModel()
 
-# Create a Validator object
-validator = Validator(device="cuda", debugging=True)
 
-# Run validation for different resolutions
-validator.calculate_masks_metrics(dataloader=dataloader_lr, model=lr_model, pred_type="LR", debugging=True)
-validator.calculate_masks_metrics(dataloader=dataloader_hr, model=hr_model, pred_type="HR", debugging=True)
-validator.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred_type="SR", debugging=True)
+# 3. Validate -----------------------------------------------------------------------------------------------------
+# 3.1 Create Validator object
+val_obj = Validator(output_folder="data_folder", device="cpu", force_recalc= False, debugging=True)
 
-# Retrieve and print the raw metrics
-metrics = validator.return_raw_metrics()
-validator.print_sr_improvement()
+# 3.2  Calculate images and save to Disk
+val_obj.run_predictions(dataloader_lr, lr_model, pred_type="LR", load_pkl=True)
+val_obj.run_predictions(dataloader_hr, hr_model, pred_type="HR", load_pkl=True)
+val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
+
+# 3.3 - Calcuate Metrics
+# 3.3.1 Calculate Segmentation Metrics based on predictions
+val_obj.calculate_segmentation_metrics(pred_type="LR", threshold=0.75)
+val_obj.calculate_segmentation_metrics(pred_type="HR", threshold=0.75)
+val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
+    
+# 3.3.2 Calculate Object Detection Metrics based on predictions
+val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.50)
+val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.50)
+val_obj.calculate_object_detection_metrics(pred_type="SR", threshold=0.50)
 
 
-# calculate mAP curves
-val_obj.get_mAP_curve(dataloader_lr, lr_model, pred_type="LR", amount_batches=10)
-val_obj.get_mAP_curve(dataloader_hr, hr_model, pred_type="HR", amount_batches=10)
-val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10)
+# 4. Check out Results and Metrics -------------------------------------------------------------------------------------
+# 4.1 Visual Inspection
+val_obj.save_results_examples(num_examples=1)
 
-# plot mAP curve
-mAP_plot = val_obj.plot_mAP_curve()
-mAP_plot.save("resources/mAP_plot.png")
+# 4.2 Check Segmentation Metrics
+val_obj.print_segmentation_metrics(save_csv=True)
+val_obj.print_segmentation_improvements(save_csv=True)
 
-# get Example images
-val_obj.return_pred_images(output_path="results/example_images")
+# 4.3 Check Object Detection Metrics
+val_obj.print_object_detection_metrics(save_csv=True)
+val_obj.print_object_detection_improvements(save_csv=True)
 
+# 4.4 Check Threshold Curves
+val_obj.plot_threshold_curves(metric="all")
 ```
 
 4. **Debugging**
@@ -136,39 +163,46 @@ validator = Validator(device="cuda", debugging=True)
 ```
 
 ## Main Functions  
-- **calculate_masks_metrics(dataloader, model, pred_type)**: Predicts masks using the provided model and computes relevant segmentation metrics.
-- **return_raw_metrics()**: Returns the raw metrics stored in the object.
-- **print_raw_metrics()**: Prints the raw metrics stored in the object.
-- **print_sr_improvement(save_to_txt=True)**: Prints a table showing SR metric improvement over LR and loss over HR. Optionally save to txt into "results" folder
-- **get_mAP_curve()**: Computes and stores the mean Average Precision (mAP) curve over multiple thresholds for a given model and dataset across a specified number of batches.
-- **plot_mAP_curve()**: Plots the mAP curve for the stored prediction types and returns it as a PIL.Image.
-- **return_pred_images()**: Saves Examples of LR,SR,HR images, their ground truths and predictions to pngs for visual validation.
+- `run_predictions()`: Predicts and stores masks. Uses cached `.pkl` if available.
+- `calculate_segmentation_metrics()`: Computes segmentation metrics. Uses cached values if available unless `force_recalc=True`.
+- `calculate_object_detection_metrics()`: Computes object-level detection metrics.
+- `plot_threshold_curves()`: Plots metrics vs thresholds. Loads `.pkl` if cached.
+- `save_results_examples()`: Saves visual triplets of input, prediction, and GT for LR/SR/HR.
+- `print_segmentation_metrics()`: Prints and optionally saves segmentation scores.
+- `print_segmentation_improvements()`: Shows delta between SR and LR/HR.
+- `print_object_detection_metrics()`: Prints and saves object detection metrics.
+- `print_object_detection_improvements()`: Shows object-level detection improvements.
+
 
 ## Example Output
 ### Impriovement Statistics
 The tool generates a table comparing SR metric improvement over LR and loss over HR. Here's an example:
 ```sql
-+----------------------------------+---------------------------+---------------------------+
-|              Metric              | Improvement of SR over LR | Improvement of HR over SR |
-+----------------------------------+---------------------------+---------------------------+
-|          avg_obj_score           |          -0.0002          |          -0.0003          |
-|          perc_found_obj          |          -3.8546          |           0.4100          |
-| avg_obj_pred_score_by_size_11-20 |           0.0123          |          -0.0003          |
-| avg_obj_pred_score_by_size_5-10  |          -0.0082          |           0.0071          |
-|  avg_obj_pred_score_by_size_21+  |          -0.0032          |           0.0005          |
-|  avg_obj_pred_score_by_size_0-4  |          -0.0571          |          -0.0001          |
-|               IoU                |          -0.0001          |          -0.0000          |
-|               Dice               |          -0.0002          |          -0.0001          |
-|            Precision             |          -0.0001          |          -0.0001          |
-|              Recall              |          -0.0004          |           0.0078          |
-|             Accuracy             |          -0.0002          |          -0.0003          |
-+----------------------------------+---------------------------+---------------------------+
++-----------+-----------+----------+-----------+
+|   Metric  | LR → SR Δ |    SR    | HR → SR Δ |
++-----------+-----------+----------+-----------+
+|    IoU    |    0.0    |   0.0    |    0.0    |
+|    Dice   |    0.0    |   0.0    |    0.0    |
+| Precision |    0.0    |   0.0    |    0.0    |
+|   Recall  |    0.0    |   0.0    |    0.0    |
+|  Accuracy |  0.004232 | 0.750163 |  0.007812 |
++-----------+-----------+----------+-----------+
 ```
-### mAP Curve for Detected Objects
-![mAP Curve](results/mAP_plot.png?raw=true)
+  
+```sql
++---------------------------------+-----------+----------+-----------+
+|              Metric             | LR → SR Δ |    SR    | HR → SR Δ |
++---------------------------------+-----------+----------+-----------+
+| Average Object Prediction Score |  0.004536 | 0.496032 |  0.004596 |
+|    Percent of Buildings Found   |    10.0   |   40.0   | 14.583333 |
++---------------------------------+-----------+----------+-----------+
+```
 
 ### mAP Curve for Detected Objects
-![example images](results/example_images/example_1.png?raw=true)
+![mAP Curve](resources/threshold_plot.png)
+
+### mAP Curve for Detected Objects
+![example images](resources/example.png)
 
 ## Results and Analysis
 At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models. If required, you will also see a mAP curve for each data type prediciton.

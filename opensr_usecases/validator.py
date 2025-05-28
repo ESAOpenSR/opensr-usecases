@@ -1,142 +1,100 @@
 # global
 import torch
-
-from PIL import Image
 import numpy as np
-
-# from tqdm import tqdm
 import matplotlib.pyplot as plt
-
-import io
+import pandas as pd
 import os
 from tqdm import tqdm
-
-# local
-from opensr_usecases.utils.utils import compute_average_metrics
 
 
 class Validator:
     """
-    A class designed to validate object detection models by predicting masks and calculating metrics.
+    Validator: A class for evaluating segmentation model outputs across multiple prediction types (LR, SR, HR).
 
-    The `Validator` class utilizes an object detection analyzer to compute metrics for predicted masks
-    from models such as super-resolution (SR), low-resolution (LR), and high-resolution (HR) models.
-    It stores computed metrics in a structured dictionary and allows for the averaging of those metrics
-    across batches.
+    The `Validator` class provides a full evaluation pipeline for segmentation tasks. It handles prediction generation, 
+    storage, metric calculation, and comparison across models operating at different resolutions:
+    - LR: Low-Resolution input predictions
+    - SR: Super-Resolution input predictions
+    - HR: High-Resolution input predictions
+
+    Key Features:
+    -------------
+    - Generates and saves predictions, ground truth masks, and input images as `.npz` files.
+    - Automatically constructs and updates a metadata table (`self.metadata`) for all processed samples.
+    - Computes per-threshold segmentation metrics (IoU, Dice, Precision, Recall, Accuracy) and plots metric-threshold curves.
+    - Outputs average performance summaries per prediction type and highlights improvements of SR over LR/HR.
+    - Includes optional debugging mode for rapid testing with limited batches.
+
+    Typical Workflow:
+    -----------------
+    1. Use `run_predictions()` to compute and store predictions and metadata.
+    2. Use `calculate_segmentation_metrics()` to compute average metrics per prediction type.
+    3. Use `plot_threshold_curves()` to visualize performance variation with binarization thresholds.
+    4. Use `print_segmentation_metrics()` and `print_segmentation_improvements()` to analyze results.
+    5. Optionally save example comparisons using `save_results_examples()`.
+
+    Dependencies:
+    -------------
+    - PyTorch
+    - NumPy
+    - Pandas
+    - Matplotlib
+    - tqdm
+    - External utilities from `opensr_usecases` for metric computation and pretty-printing.
 
     Attributes:
-        device (str): The device on which the model and tensors should be loaded ("cpu" or "cuda").
-        debugging (bool): Flag to indicate whether to stop early during debugging for efficiency.
-        object_analyzer (ObjectDetectionAnalyzer): An analyzer used to compute various object detection metrics.
-        metrics (dict): A dictionary to store averaged evaluation metrics for different model types (e.g., LR, HR, SR).
+    -----------
+    - device (str): "cuda" or "cpu" — used to control model evaluation device.
+    - debugging (bool): If True, limits operations to a small number of samples/batches.
+    - output_folder (str): Directory where outputs, examples, and metadata are stored.
+    - metadata (pd.DataFrame): Table containing paths to input images, predictions, and ground truths.
+    - segmentation_metrics (pd.DataFrame): Stores average metrics per prediction type.
+    - mAP_metrics (dict): Stores threshold curve data for supported metrics.
     """
 
-    def __init__(self, device="cpu", debugging=False):
+    def __init__(self, output_folder="data_folder", device="cpu", force_recalc=False, debugging=False):
         """
         Initializes the `Validator` class by setting the device, debugging flag, loading the object
         detection analyzer, and preparing a metrics dictionary to store evaluation results.
 
         Args:
+            output_folder (str): The folder where the output predictions and metadata will be saved.
             device (str, optional): The device to use for computation ("cpu" or "cuda"). Defaults to "cpu".
             debugging (bool, optional): If set to True, will limit iterations for debugging purposes. Defaults to False.
 
         Attributes:
             device (str): Device to be used for model evaluation (e.g., "cuda" or "cpu").
             debugging (bool): Flag indicating if debugging mode is active.
-            object_analyzer (ObjectDetectionAnalyzer): Initializes the object detection analyzer for use in metrics computation.
-            metrics (dict): Initializes an empty dictionary to hold evaluation metrics for different prediction types.
         """
-        self.device = device
-        self.debugging = debugging
+        self.device = device # Device to run the model on, e.g., "cuda" or "cpu"
+        self.debugging = debugging # If True, limits operations to a small number of samples/batches
+        self.output_folder = output_folder # Directory where results will be saved
+        self.force_recalc = force_recalc # If True, forces recalculation of predictions and metrics even if they exist
         if self.debugging:
             print(
-                "Warning: Debugging Mode is active. Only 10 batches will be processed."
+                "Warning: Debugging Mode is active. Only 2 Batches will be processed."
             )
 
-        # Load the object detection analyzer
-        from .object_detection.object_detection_analyzer import ObjectDetectionAnalyzer
+        # This holds the path info and later on the metrics
+        self.metadata = pd.DataFrame()
 
-        self.object_analyzer = ObjectDetectionAnalyzer()
 
-        # Initialize an empty dictionary to store metrics for various prediction types (LR, HR, SR)
-        self.metrics = {}
-        self.mAP_metrics = {}
-        self.image_dict = {}
-
-    def print_raw_metrics(self):
+    def run_predictions(self, dataloader, model, pred_type, load_pkl=False):
         """
-        Prints the raw metrics stored in the object.
-        """
-        if len(self.metrics.keys()) == 0:
-            print("No metrics have been computed yet.")
-        for k in self.metrics.keys():
-            print(k, "\n", self.metrics[k], "\n")
+        Run inference and manage prediction metadata for a specific prediction type.
 
-    def print_sr_improvement(self, save_to_txt=False):
-        if save_to_txt:
-            import os
-            os.makedirs("results", exist_ok=True)
-        from .utils.pretty_print_metrics import print_sr_improvement
-
-        self.print_sr_improvement = print_sr_improvement(self.metrics,save_to_txt)
-
-    def return_raw_metrics(self):
-        """
-        Returns the raw metrics stored in the object.
-        """
-        if len(self.metrics.keys()) == 0:
-            print("No metrics have been computed yet. Returning 'None'.")
-            return None
-        else:
-            return self.metrics
-
-    def calculate_masks_metrics(self, dataloader, model, pred_type, threshold=0.75,create_images=True):
-        """
-        Predicts masks for a given dataset using the provided model, computes relevant metrics, 
-        and optionally saves visualizations of input images, ground truth masks, and predictions.
+        This method either loads existing prediction metadata from disk or runs the full prediction pipeline 
+        (using `save_predictions`) for a given prediction type ("LR", "HR", or "SR"). It ensures that predictions 
+        are generated and metadata is available for downstream evaluation or visualization.
 
         Args:
-            dataloader (torch.utils.data.DataLoader): 
-                Dataloader that provides batches of input images and ground truth masks.
-            model (torch.nn.Module): 
-                Model used to predict the masks.
-            pred_type (str): 
-                Type of prediction (e.g., "LR", "HR", "SR"). Must be one of ["LR", "HR", "SR"].
-            threshold (float, optional): 
-                Threshold for binarizing predicted masks. Default is 0.75.
-            create_images (bool, optional): 
-                If True, generates and saves visual comparisons of input images, ground truth masks, 
-                and predicted masks for the given dataset. Default is True.
-
-        Returns:
-            dict: 
-                A dictionary containing the average metrics computed over all batches, such as 
-                accuracy, precision, recall, or other relevant evaluation metrics.
+            dataloader (torch.utils.data.DataLoader): Dataloader containing input images and ground truth masks.
+            model (torch.nn.Module): Trained segmentation model to use for prediction.
+            pred_type (str): One of "LR", "HR", or "SR" indicating the type of input being processed.
+            load_pkl (bool, optional): If True and a metadata file exists, loads it from disk instead of re-generating predictions.
 
         Raises:
-            AssertionError: 
-                If pred_type is not one of ["LR", "HR", "SR"].
-
-        Behavior:
-        - The function performs the following steps:
-            1. Iterates over the `dataloader` to predict masks for each batch.
-            2. Computes metrics to evaluate the predicted masks against ground truth.
-            3. If `create_images` is True:
-                - Calls the `create_images` function to generate visualizations of input images, 
-                ground truth masks, and predicted masks.
-                - Calls the `save_pred_images` function to save these visualizations to disk.
-
-        Example:
-        --------
-        # Assuming you have a DataLoader `dataloader`, a trained model `model`, and an appropriate pred_type
-        metrics = self.calculate_masks_metrics(dataloader, model, pred_type="SR", threshold=0.8, create_images=True)
-
-        If `create_images=True`, the function will save image visualizations in the specified directory.
-
-        Related Functions:
-        ------------------
-        - `create_images`: Generates a dictionary of input images, ground truth masks, and predictions.
-        - `save_pred_images`: Saves the generated images to disk.
+            AssertionError: If `pred_type` is not one of the expected values.
         """
 
         # Ensure that the prediction type is valid
@@ -146,23 +104,77 @@ class Validator:
             "SR",
         ], "prediction type must be in ['LR', 'HR', 'SR']"
 
+
+        metadata_path = os.path.join(self.output_folder,"internal_files", "metadata.pkl")
+        if load_pkl and os.path.exists(metadata_path) and not self.force_recalc:
+            # Load metadata from pickle file - Fast
+            print("Loading existing metadata from disk, masks have been previously calculated")
+            self.metadata = pd.read_pickle(metadata_path)
+        else:
+            # Save predictions to disk
+            print(f"Running predictions for {pred_type} and saving to disk.")
+            self.save_predictions(dataloader, model, pred_type)
+
+
+    def save_predictions(self, dataloader, model, pred_type):
+        """
+        Generate segmentation mask predictions, save results, and update metadata.
+
+        This method performs inference using the provided model on a dataset and saves the predicted masks, ground truth masks, 
+        and input images as compressed NumPy arrays. It also maintains and updates a metadata DataFrame that tracks file paths 
+        for each prediction type (e.g., LR, HR, SR).
+
+        Args:
+            model (torch.nn.Module): Trained segmentation model.
+            dataloader (torch.utils.data.DataLoader): DataLoader providing batches of images and ground truth masks.
+            pred_type (str): Identifier for the type of prediction being processed ("LR", "HR", or "SR").
+
+        Side Effects:
+            - Creates output directories under `self.output_folder` for saving predictions, ground truths, and images.
+            - Saves .npz files for predicted masks, ground truth masks (once per ID), and input images.
+            - Appends paths and image IDs to internal metadata.
+            - Saves metadata as a pickle file (`metadata.pkl`) when all prediction types are processed.
+
+        Notes:
+            - If `self.debugging` is True, only processes a limited number of batches.
+            - Assumes `self.device` is properly set to 'cuda' or 'cpu'.
+            - Assumes `self.metadata` is a pandas DataFrame with columns for different prediction types.
+        """
+
+        # 1. CHECK AND CREATE DIRECTORIES ----------------------------------------------------------------------------
+        # Check if general output_res directory exists, if not create it
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
+
+        # create a directory to save the predicted masks
+        output_dir = os.path.join(self.output_folder, pred_type)
+        os.makedirs(output_dir, exist_ok=True)
+
+        # create GT_path
+        gt_dir = os.path.join(self.output_folder, "GT")
+        os.makedirs(gt_dir, exist_ok=True)
+
+        # 1.1 Create Lists
+        image_ids = []
+        gt_paths = []
+        image_paths = []
+        pred_paths = []
+        global_id = 0
+
+        # 2. PREDICT MASKS ------------------------------------------------------------------------------------------
+        
         # Set the model to evaluation mode and move it to the GPU (if available)
         model = model.eval().to(self.device)
-
-        # Initialize an empty list to store metrics for each batch
-        metrics_list = []
 
         # Disable gradient computation for faster inference
         with torch.no_grad():
             # Iterate over batches of images and ground truth masks
-            image_count = 10 if self.debugging else len(dataloader)
+            total = 2 if self.debugging else len(dataloader)
             for id, batch in enumerate(
                 tqdm(
                     dataloader,
                     desc=f"Predicting masks and calculating metrics for {pred_type}",
-                    total=image_count,
-                )
-            ):
+                    total=total)):
                 # Unpack the batch (images and ground truth masks)
                 images, gt_masks = batch
 
@@ -172,227 +184,568 @@ class Validator:
                 # Forward pass through the model to predict masks
                 pred_masks = model(images)
 
-                # Compute metrics using the object analyzer
-                batch_metrics = self.object_analyzer.compute(
-                    target=gt_masks, pred=pred_masks
-                )
+                for i, (im, pred, gt) in enumerate(zip(images, pred_masks, gt_masks)):
+                    global_id += 1
 
-                # Append the computed metrics to the list
-                metrics_list.append(batch_metrics)
+                    # Ensure 2D mask shape
+                    pred = np.squeeze(pred.cpu().numpy())
+                    gt = np.squeeze(gt.cpu().numpy())
 
-                # Optional: Break the loop after 10 batches (for debugging or testing purposes)
-                if self.debugging and id == 10:
+                    # Ensure 3D-shaped input image
+                    im_np = im.cpu().numpy()
+                    im_np = np.transpose(im[:3,:,:], (1, 2, 0))
+
+                    # Save prediction
+                    pred_out_name = os.path.join(output_dir, f"pred_{global_id}.npz")
+                    np.savez_compressed(pred_out_name, data=pred)
+
+                    # Save GT - does this for each type, but doesnt matter
+                    gt_out_name = os.path.join(gt_dir, f"gt_{global_id}.npz")
+                    # if gt doesnt exist
+                    if not os.path.exists(gt_out_name):
+                        np.savez_compressed(gt_out_name, data=gt)
+
+                    # Save input image
+                    im_out_name = os.path.join(output_dir, f"image_{global_id}.npz")
+                    np.savez_compressed(im_out_name, data=im_np)
+
+                    # Append paths and IDs to lists for later use
+                    image_ids.append(global_id)
+                    gt_paths.append(gt_out_name)
+                    image_paths.append(im_out_name)
+                    pred_paths.append(pred_out_name)
+
+                # Stop after x iterations for debugging mode
+                if self.debugging and id == 2:
                     break
 
-        # Compute the average of all metrics across the batches
-        averaged_metrics = compute_average_metrics(metrics_list)
+        # 3. SAVE METADATA ------------------------------------------------------------------------------------------
+        df = pd.DataFrame({
+            "image_id": image_ids,
+            f"image_path_{pred_type}": image_paths,
+            f"pred_path_{pred_type}": pred_paths,
+            "gt_path": gt_paths
+        })
 
-        # Store the averaged metrics for the specified prediction type
-        self.metrics[pred_type] = averaged_metrics
-        
-        if create_images:
-            from opensr_usecases.utils.create_and_save_images import create_images
-            self.image_dict[pred_type] = create_images(dataloader,model,device=self.device)
-            
-    def save_pred_images(self,output_path):
+        # Merge into self.metadata
+        if self.metadata.empty:
+            self.metadata = df
+        else:
+            self.metadata[f"image_path_{pred_type}"] = df[f"image_path_{pred_type}"]
+            self.metadata[f"pred_path_{pred_type}"] = df[f"pred_path_{pred_type}"]
+
+        # If all types have been processed, save the metadata
+        if "pred_path_LR" in self.metadata.columns and "pred_path_HR" in self.metadata.columns and "pred_path_SR" in self.metadata.columns:
+            out_path = os.path.join(self.output_folder, "internal_files")
+            os.makedirs(out_path, exist_ok=True)
+            self.metadata.to_pickle(os.path.join(out_path, "metadata.pkl"))
+            print(f"Metadata saved to {os.path.join(out_path, 'metadata.pkl')}")
+
+
+    def plot_threshold_curves(self, metric="IoU"):
         """
-        Saves predicted images, ground truth masks, and input images using the 
-        `save_images` utility function.
+        Plot a segmentation performance metric across threshold values for each prediction type (LR, SR, HR).
 
-        Parameters:
-        - output_path (str): The directory where the generated image comparisons 
-        (e.g., HR, LR, SR images along with their masks and predictions) will be saved.
-
-        Returns:
-        None
-
-        Behavior:
-        - Ensures that the "results" directory exists or creates it.
-        - Calls the `save_images` function from `opensr_usecases.utils.create_and_save_images` 
-        to generate and save image comparisons.
-
-        Example:
-        --------
-        Assuming `self.image_dict` has the required structure:
-        
-        self.image_dict = {
-            "HR": {"image": [...], "GT": [...], "pred": [...]},
-            "LR": {"image": [...], "pred": [...]},
-            "SR": {"image": [...], "pred": [...]}
-        }
-
-        self.save_pred_images("results/example_images")
-
-        This will save the visualizations in the specified `output_path`.
-        """
-        
-        from opensr_usecases.utils.create_and_save_images import save_images
-        os.makedirs("results", exist_ok=True)
-        save_images(self.image_dict,output_path)
-
-    def get_mAP_curve(self, dataloader, model, pred_type="LR", amount_batches=50):
-        """
-        Computes the mean Average Precision (mAP) curve for a given model and dataset.
+        This method computes or loads segmentation metrics (e.g., IoU, Dice, Precision, etc.) over a range 
+        of binarization thresholds for different prediction types. If previously computed data exists in 
+        `self.mAP_metrics` or on disk as a .pkl file, it is reused. The selected metric is then plotted 
+        against the threshold values and saved as a PNG.
 
         Args:
-            dataloader (torch.utils.data.DataLoader): 
-                DataLoader that provides batches of input images and ground truth masks.
-            model (torch.nn.Module): 
-                Model used to predict the masks for computing the mAP curve.
-            pred_type (str, optional): 
-                Type of prediction (e.g., "LR", "HR", "SR"). Default is "LR".
-            amount_batches (int, optional): 
-                Number of batches to process for mAP computation. Default is 50.
-
-        Returns:
-            None
-
-        Behavior:
-        - The function computes the mAP curve for the provided model and dataset:
-            1. Iterates over `amount_batches` to collect predictions and ground truth masks.
-            2. Applies a range of thresholds (0 to 1) to the predicted masks.
-            3. Computes the percentage of "found" objects at each threshold using the 
-            `self.object_analyzer.compute_found_objects_percentage` method.
-            4. Aggregates the results across batches to calculate the mean Average Precision (mAP) curve.
+            metric (str): The segmentation metric to plot. Must be one of 
+                        ["IoU", "Dice", "Precision", "Recall", "Accuracy", 
+                        "Average Object Prediction Score", "Percent of Buildings Found", "all"].
 
         Side Effects:
-        - Stores the computed mAP metrics in the `self.mAP_metrics` dictionary under the 
-        specified `pred_type`. The dictionary contains:
-            - "thresholds": An array of threshold values.
-            - "TP_percentage": An array of true positive percentages for each threshold.
+            - Populates or reuses `self.mAP_metrics`, a DataFrame containing metric values for all thresholds.
+            - Generates and saves a line plot (`threshold_curves_<metric>.png`) in `<output_folder>/plots`.
 
         Raises:
-            AssertionError: 
-                If `pred_type` is not supported by the function or associated workflows.
-
-        Example:
-        --------
-        # Assuming `self` is an instance of the class containing this method
-        self.get_mAP_curve(dataloader, model, pred_type="SR", amount_batches=30)
-
-        This will compute the mAP curve for the super-resolution (SR) predictions using 
-        30 batches from the dataloader.
-
-        Related Methods:
-        ----------------
-        - `self.object_analyzer.check_mask_validity`: Ensures the validity of ground truth 
-        and predicted masks.
-        - `self.object_analyzer.compute_found_objects_percentage`: Calculates the percentage 
-        of correctly found objects at a given threshold.
+            AssertionError: If the provided metric is not supported.
 
         Notes:
-        ------
-        - The function assumes that the model's outputs are compatible with the ground truth 
-        masks and the object analyzer's methods.
-        - Uses `torch.no_grad()` to disable gradient computations for efficiency during evaluation.
-        - Results are stored in the class instance for later access.
+            - Assumes predicted and ground truth masks are referenced in `self.metadata`.
         """
-        model = model.eval().to(self.device)
+        supported_metrics = [
+            'IoU', 'Dice', 'Precision', 'Recall', 'Accuracy',
+            'Average Object Prediction Score', 'Percent of Buildings Found', 'all'
+        ]
+        assert metric in supported_metrics, f"Metric '{metric}' not supported. Choose from {supported_metrics}"
 
-        found_percentages = []
-        thresholds = np.linspace(0, 1, 25)
+        if metric == "all":
+            print("Plotting all supported Metrics!")
+            for m in [m for m in supported_metrics if m != "all"]:
+                self.plot_threshold_curves(metric=m)
+            return
 
-        percentage_batch = []
+        # File path to cached metrics
+        results_folder = os.path.join(self.output_folder, "internal_files")
+        os.makedirs(results_folder, exist_ok=True)
+        metrics_path = os.path.join(results_folder, "threshold_metrics.pkl")
 
-        # Run the prediction once for the entire batch
-        for i in tqdm(
-            range(amount_batches), desc="Computing mAP curve for " + pred_type
-        ):  # Assuming 10 iterations or batches
-            images, gt_masks = next(iter(dataloader))
-            images = images.to(self.device)
-            with torch.no_grad():
-                pred_masks = model(images)  # Run the prediction once
+        # Try loading from file
+        if os.path.exists(metrics_path) and not self.force_recalc:
+            print(f"Loading mAP_metrics from cache: {metrics_path}")
+            self.mAP_metrics = pd.read_pickle(metrics_path)
 
-            # Ensure masks are valid
-            gt_masks, pred_masks = self.object_analyzer.check_mask_validity(
-                gt_masks
-            ), self.object_analyzer.check_mask_validity(pred_masks)
+        elif hasattr(self, "mAP_metrics") and isinstance(self.mAP_metrics, pd.DataFrame) and not self.mAP_metrics.empty:
+            print(f"Using existing mAP_metrics from memory for metric {metric}.")
 
-            # Iterate over thresholds
-            threshold_percentages = []
-            for thresh in thresholds:
-                threshold_percentages.append(
-                    self.object_analyzer.compute_found_objects_percentage(
-                        gt_masks, pred_masks, thresh
-                    )
-                )
+        else:
+            print("Calculating mAP_metrics from scratch. This might take a moment...")
+            rows = []
+            for pred_type in tqdm(["LR", "HR", "SR"], desc="Calculating Threshold Curves..."):
+                if f"pred_path_{pred_type}" not in self.metadata.columns:
+                    print(f"No segmentation masks found for {pred_type}. Please calculate them first.")
+                    continue
 
-            # Calculate the average found percentage for each threshold
-            percentage_batch.append(threshold_percentages)
+                thresholds = np.arange(0.1, 1.0, 0.05)
+                for threshold in thresholds:
+                    df1 = self.calculate_segmentation_metrics(pred_type, threshold=threshold, return_metrics=True, verbose=False)
+                    df2 = self.calculate_object_detection_metrics(pred_type, threshold=threshold, return_metrics=True, verbose=False)
 
-        # Calculate the mean across batches
-        found_percentages = np.mean(percentage_batch, axis=0)
+                    combined_row = {"Prediction Type": pred_type, "Threshold": threshold}
+                    combined_row.update(df1.loc[pred_type].to_dict())
+                    combined_row.update(df2.loc[pred_type].to_dict())
+                    rows.append(combined_row)
 
-        # Store results in the mAP metrics dictionary
-        self.mAP_metrics[pred_type] = {
-            "thresholds": thresholds,
-            "TP_percentage": found_percentages,
-        }
+            self.mAP_metrics = pd.DataFrame(rows)
+            self.mAP_metrics.to_pickle(metrics_path)
+            print(f"Saved mAP_metrics to: {metrics_path}")
 
-    def plot_mAP_curve(self):
-        """
-        Plots and returns the mean Average Precision (mAP) curve as a PIL image.
+        # PLOT
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 6))
+        for pred_type in ["LR", "HR", "SR"]:
+            df = self.mAP_metrics[self.mAP_metrics["Prediction Type"] == pred_type]
+            plt.plot(df["Threshold"], df[metric], label=pred_type)
 
-        This method visualizes the mAP curve for different prediction types based on
-        previously computed mAP metrics stored in the `self.mAP_metrics` dictionary.
-        The mAP curve is plotted by comparing the confidence thresholds with the
-        percentage of objects found (True Positives) at each threshold.
-
-        If no mAP metrics are available, it prints a message guiding the user to compute
-        the metrics first.
-
-        Returns:
-            PIL.Image: The plotted mAP curve as a PIL image object. If no metrics are
-                    available, returns None.
-
-        Raises:
-            None. This function will handle empty data and simply return without plotting
-            if no mAP metrics are present.
-
-        Example:
-            If the mAP metrics have been computed using:
-            `Validator.get_mAP_curve(self, dataloader, model, pred_type='LR')`,
-            calling `plot_mAP_curve()` will return a PIL image of the mAP curve, which can
-            be displayed or saved.
-
-        """
-        if len(self.mAP_metrics.keys()) == 0:
-            print("No mAP metrics have been computed yet.")
-            print(
-                "Compute with: Validator.get_mAP_curve(self,dataloader, model,pred_type='LR')"
-            )
-            return None
-
-        # Initialize the figure
-        plt.figure()
-
-        # Loop over all prediction types in mAP_metrics
-        for pred_type in self.mAP_metrics.keys():
-            thresholds = self.mAP_metrics[pred_type]["thresholds"]
-            found_percentages = self.mAP_metrics[pred_type]["TP_percentage"]
-
-            # Plot the mAP curve
-            plt.plot(
-                thresholds[1:], found_percentages[1:], label=f"{pred_type} mAP curve"
-            )
-
-        # Adding labels and title
-        plt.xlabel("Confidence Threshold")
-        plt.ylabel("Percentage of Found Objects")
-        plt.title("mAP Curves for Different Prediction Types")
+        plt.xlabel("Threshold")
+        plt.ylabel(metric)
+        plt.title(f"{metric} vs Threshold")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
+        out_folder = os.path.join(self.output_folder, "plots")
+        os.makedirs(out_folder, exist_ok=True)
+        plt.savefig(os.path.join(out_folder, f"threshold_curves_{metric.replace(' ', '_')}.png"))
+        plt.close()
 
-        # Save the plot to a buffer in PNG format
-        buf = io.BytesIO()
-        plt.savefig(buf, format="PNG")
-        plt.close()  # Close the plt figure to free memory
-        buf.seek(0)  # Move the buffer cursor to the beginning
 
-        # Convert the buffer to a PIL image
-        image = Image.open(buf)
-        image.load()  # Ensure the image is fully loaded
-        buf.close()  # Close the buffer after reading it
 
-        # Return the PIL image
-        return image
+    def plot_threshold_curves_o(self, metric="IoU"):
+        """
+        Plot a segmentation performance metric across threshold values for each prediction type (LR, SR, HR).
+
+        This method computes or loads segmentation metrics (e.g., IoU, Dice, Precision, etc.) over a range 
+        of binarization thresholds for different prediction types. If previously computed data exists in 
+        `self.mAP_metrics`, it is reused to avoid recomputation. The selected metric is then plotted against 
+        the threshold values and saved as a PNG.
+
+        Args:
+            metric (str): The segmentation metric to plot. Must be one of 
+                        ["IoU", "Dice", "Precision", "Recall", "Accuracy"].
+
+        Side Effects:
+            - Populates or reuses `self.mAP_metrics`, a DataFrame containing metric values for all thresholds.
+            - Generates and saves a line plot (`threshold_curves.png`) in `self.output_folder`.
+
+        Raises:
+            AssertionError: If the provided metric is not in the list of supported metrics.
+
+        Notes:
+            - Assumes predicted and ground truth masks are referenced in `self.metadata`.
+            - Calls `self.calculate_segmentation_metrics()` for each threshold if results are not cached.
+        """
+        supported_metrics = ['IoU', 'Dice', 'Precision', 'Recall', 'Accuracy', 'Average Object Prediction Score', 'Percent of Buildings Found' ,'all']
+        assert metric in supported_metrics, f"Metric '{metric}' not supported. Choose from {supported_metrics}"
+
+        if metric == "all":
+            # recursive call over all supported metrics
+            print(f"Plotting all supported Metrics!")
+            for m in [m for m in supported_metrics if m != "all"]: # exclude "all"
+                self.plot_threshold_curves(metric=m)
+            return  # <- important!
+
+        # Check if the object already has metrics stored
+        if hasattr(self, "mAP_metrics") and isinstance(self.mAP_metrics, pd.DataFrame) and not self.mAP_metrics.empty:
+            print("Using existing mAP_metrics from memory for metric {metric}.")
+        else:
+            print("Calculating mAP_metrics from scratch. This might take a moment...")
+            # Iterate over LR/SR/HR data types
+            rows = []
+            for pred_type in tqdm(["LR", "HR", "SR"], desc="Calculating Threshold Curves..."):
+
+                if f"pred_path_{pred_type}" not in self.metadata.columns:
+                    print(f"No segmentation masks found for {pred_type}. Please calculate them first. Attempting to continue...")
+
+                thresholds = np.arange(0.1, 1.0, 0.05)
+                for threshold in thresholds:
+                    df1 = self.calculate_segmentation_metrics(pred_type, threshold=threshold, return_metrics=True, verbose=False)
+                    df2 = self.calculate_object_detection_metrics(pred_type, threshold=threshold, return_metrics=True, verbose=False)
+
+                    # Combine both rows (should be Series), and store with prediction type + threshold
+                    combined_row = {"Prediction Type": pred_type, "Threshold": threshold}
+                    combined_row.update(df1.loc[pred_type].to_dict())
+                    combined_row.update(df2.loc[pred_type].to_dict())
+
+                    rows.append(combined_row)
+
+            # Save all metrics across thresholds to a DataFrame
+            self.mAP_metrics = pd.DataFrame(rows)
+
+
+        # CONTINUE -  Plot directly from self.mAP_metrics
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 6))
+        for pred_type in ["LR", "HR", "SR"]:
+            df = self.mAP_metrics[self.mAP_metrics["Prediction Type"] == pred_type]
+            plt.plot(df["Threshold"], df[metric], label=pred_type)
+
+        plt.xlabel("Threshold")
+        plt.ylabel(metric)
+        plt.title(f"{metric} vs Threshold")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        out_folder = os.path.join(self.output_folder, "plots")
+        os.makedirs(out_folder, exist_ok=True)
+        plt.savefig(os.path.join(out_folder, str("threshold_curves_{}.png".format(metric)).replace(" ", "_") ))
+        plt.close()
+
+        
+    def save_results_examples(self, num_examples=5):
+        """
+        Save example image triplets (input, prediction, ground truth) for LR, SR, and HR predictions.
+
+        Randomly samples a specified number of image IDs from `self.metadata` and generates visualizations 
+        for each, showing the input image, predicted mask, and ground truth mask for all three prediction 
+        types: LR (Low Resolution), SR (Super Resolution), and HR (High Resolution). The resulting plots 
+        are saved as PNG images in an 'examples' subdirectory.
+
+        Args:
+            num_examples (int): Number of example visualizations to generate.
+
+        Side Effects:
+            - Loads .npz files from paths listed in `self.metadata`.
+            - Creates and saves composite comparison images to `self.output_folder/examples/`.
+
+        Notes:
+            - Assumes `self.metadata` contains columns: `image_path_<pred_type>`, `pred_path_<pred_type>`, and `gt_path`.
+            - Applies min-max normalization to images before visualization.
+            - Handles missing data gracefully and continues processing other examples.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
+        output_dir = os.path.join(self.output_folder, "examples")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Sample random image IDs (assumes unique image_id per row)
+        sampled_rows = self.metadata.sample(num_examples, random_state=42)
+
+        for index, row in sampled_rows.iterrows():
+            fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(12, 12), dpi=150)
+            pred_types = ["LR", "SR", "HR"]
+
+            for i, pred_type in enumerate(pred_types):
+                try:
+                    image = np.load(row[f"image_path_{pred_type}"])["data"][:,:,:3]
+                    pred_mask = np.load(row[f"pred_path_{pred_type}"])["data"]
+                    gt_mask = np.load(row["gt_path"])["data"]
+
+                    # Min-max stretch the image
+                    image = (image - np.min(image)) / (np.max(image) - np.min(image))
+
+                    # Plot: image, pred, gt
+                    axes[i, 0].imshow(image)
+                    axes[i, 0].set_title(f"{pred_type} Image")
+                    #axes[i, 0].axis("off")
+
+                    axes[i, 1].imshow(pred_mask, cmap="gray")
+                    axes[i, 1].set_title(f"{pred_type} Prediction")
+                    #axes[i, 1].axis("off")
+
+                    axes[i, 2].imshow(gt_mask, cmap="gray")
+                    axes[i, 2].set_title("Ground Truth")
+                    #axes[i, 2].axis("off")
+
+                except KeyError as e:
+                    print(f"Missing data for {pred_type} in row {index}: {e}")
+                    continue
+
+            plt.tight_layout(pad=1)
+            plt.savefig(os.path.join(output_dir, f"example_{index}.png"))
+            plt.close(fig)
+
+        print(f"Saved {num_examples} comparison images to '{output_dir}'.")
+
+
+    def calculate_segmentation_metrics(self, pred_type, threshold=0.75,return_metrics=False,verbose=True):
+        """
+        Calculate average segmentation metrics for predicted masks of a specified prediction type.
+
+        This method loads predicted and ground truth masks from disk, computes per-image segmentation metrics 
+        using a given threshold, and aggregates them into an average metrics summary. Metrics can either be 
+        returned as a DataFrame or stored in the object's `self.segmentation_metrics` attribute.
+
+        Args:
+            pred_type (str): Type of prediction to evaluate ("LR", "HR", or "SR").
+            threshold (float, optional): Threshold to binarize predicted masks. Default is 0.75.
+            return_metrics (bool, optional): If True, returns a DataFrame with average metrics instead of storing it.
+            verbose (bool, optional): If True, displays a progress bar during computation.
+
+        Returns:
+            pd.DataFrame (optional): A single-row DataFrame indexed by `pred_type` with the average segmentation metrics, 
+                                    if `return_metrics=True`.
+
+        Side Effects:
+            - Reads mask files from paths listed in `self.metadata`.
+            - Updates `self.segmentation_metrics` by adding a new row for the specified `pred_type` if `return_metrics=False`.
+
+        Notes:
+            - Assumes masks are stored as `.npz` files under keys `"data"`.
+            - Uses external utility functions `segmentation_metrics()` and `compute_average_metrics()` for computation.
+        """
+        from opensr_usecases.segmentation.segmentation_utils import segmentation_metrics
+        from opensr_usecases.utils.dict_average import compute_average_metrics
+
+        # iterate over dataframe
+        metrics_list = []
+        for index, row in tqdm(self.metadata.iterrows(), desc=f"Calculating segmentation metrics for {pred_type}", disable=not verbose):
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            # Load predicted and ground truth masks
+            pred_mask = np.load(pred_path)["data"]
+            gt_mask = np.load(gt_path)["data"]
+
+            # Get Results Dict and append to metrics_list
+            metrics = segmentation_metrics(gt_mask, pred_mask, threshold=threshold)
+            metrics_list.append({k: v[0] for k, v in metrics.items()})  # flatten since we do one image per call
+
+        # Get average over Patches
+        average_metrics = compute_average_metrics(metrics_list)
+        metrics_df = pd.DataFrame([average_metrics], index=[pred_type])
+
+        if return_metrics: # if wanted, return the metrics DataFrame
+            return metrics_df
+        else: # Set to Object
+            # Initialize or update self.segmentation_metrics
+            if not hasattr(self, "segmentation_metrics") or self.segmentation_metrics is None or len(self.segmentation_metrics) == 0:
+                self.segmentation_metrics = metrics_df
+            else:
+                self.segmentation_metrics = pd.concat([self.segmentation_metrics, metrics_df])
+
+    
+    def print_segmentation_metrics(self,save_csv=False):
+        """
+        Display and optionally save segmentation metrics for all prediction types.
+
+        This method prints the segmentation metrics stored in `self.segmentation_metrics` in a well-formatted 
+        tabular view. Optionally, the metrics can be saved to a CSV file for external use.
+
+        Args:
+            save_csv (bool): If True, saves the metrics DataFrame as a CSV file to 
+                            `<output_folder>/results/segmentation_metrics.csv`.
+
+        Side Effects:
+            - Displays a table of segmentation metrics using `print_pretty_dataframe`.
+            - Creates a `results` directory under `self.output_folder` if it does not exist.
+            - Saves a CSV file with the metrics if `save_csv=True`.
+
+        Notes:
+            - Assumes `self.segmentation_metrics` is a populated pandas DataFrame.
+            - Uses external utility `print_pretty_dataframe()` for clean formatting.
+        """
+        if save_csv:
+            os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+            self.segmentation_metrics.to_csv(os.path.join(self.output_folder, "numeric_results", "segmentation_metrics.csv"))
+
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
+
+
+    def print_segmentation_improvements(self, save_csv=False):
+        """
+        Display and optionally save segmentation metric improvements between LR, SR, and HR predictions.
+
+        This method compares the segmentation performance of Super-Resolution (SR) predictions against 
+        Low-Resolution (LR) and High-Resolution (HR) baselines. It computes the per-metric deltas:
+        - `LR → SR Δ`: Improvement from LR to SR
+        - `HR → SR Δ`: Difference from HR to SR (positive means SR underperforms HR)
+
+        The comparison is printed in a transposed tabular format and can optionally be saved as a CSV.
+
+        Args:
+            save_csv (bool): If True, saves the improvement comparison table to 
+                            `<output_folder>/results/segmentation_improvements.csv`.
+
+        Side Effects:
+            - Displays a formatted table showing metric differences.
+            - Saves the comparison DataFrame as CSV if `save_csv=True`.
+
+        Raises:
+            AssertionError: If any of the required prediction types ("LR", "SR", "HR") are missing in `self.segmentation_metrics`.
+
+        Notes:
+            - Assumes segmentation metrics for all three prediction types have been calculated and stored.
+            - Uses `print_pretty_dataframe()` for clean formatting.
+        """
+
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        df = self.segmentation_metrics
+        assert "SR" in df.index, "SR row not found"
+        assert "LR" in df.index, "LR row not found"
+        assert "HR" in df.index, "HR row not found"
+
+        sr_row = df.loc["SR"]
+        lr_diff = df.loc["LR"] - sr_row
+        hr_diff = df.loc["HR"] - sr_row
+
+        # Create a DataFrame for comparison
+        comparison_df = pd.DataFrame({
+             "LR → SR Δ": pd.Series(lr_diff),
+            "SR": pd.Series(sr_row),
+            "HR → SR Δ": pd.Series(hr_diff)
+        })
+
+        # Transpose and Print
+        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+
+        if save_csv:
+            os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+            comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results", "segmentation_improvements.csv"))
+
+
+    def calculate_object_detection_metrics(self, pred_type, threshold=0.75,return_metrics=False, verbose=False):
+        """
+        Calculate object detection metrics for predicted masks of a specified prediction type.
+
+        This method computes object detection metrics such as mAP (mean Average Precision) for the predicted masks 
+        of a given prediction type (e.g., LR, HR, SR). It uses the `ObjectDetectionAnalyzer` to perform the calculations.
+
+        Args:
+            pred_type (str): Type of prediction to evaluate ("LR", "HR", or "SR").
+            threshold (float, optional): Threshold to binarize predicted masks. Default is 0.75.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the calculated object detection metrics.
+
+        Raises:
+            AssertionError: If `pred_type` is not one of the expected values.
+        """
+        # Ensure that the prediction type is valid
+        assert pred_type in ["LR","HR","SR",], "prediction type must be in ['LR', 'HR', 'SR']"
+        from opensr_usecases.object_detection.object_detection_utils import compute_avg_object_prediction_score
+        from opensr_usecases.object_detection.object_detection_utils import compute_found_objects_percentage
+
+        scores = []
+        percentage_images_found = []
+        for _, row in tqdm(self.metadata.iterrows(), desc=f"Calculating object detection metrics for {pred_type}", disable=not verbose):
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            pred_mask = np.load(pred_path)["data"]
+            gt_mask = np.load(gt_path)["data"]
+
+            avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
+            percentage_images_found.append(compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
+            scores.append(avg_score)
+
+        # Compute mean of collected scores
+        avg_result = {
+            "Average Object Prediction Score": np.mean(scores),
+            "Percent of Buildings Found": np.mean(percentage_images_found),
+        }
+        df = pd.DataFrame([avg_result], index=[pred_type])
+
+        if return_metrics:  # if wanted, return the metrics DataFrame
+            return df
+        else:
+            # Create or update the main metrics DataFrame
+            if not hasattr(self, "object_detection_metrics") or self.object_detection_metrics is None or self.object_detection_metrics.empty:
+                self.object_detection_metrics = df
+            else:
+                self.object_detection_metrics.loc[pred_type] = df.loc[pred_type]
+
+    
+    def print_object_detection_metrics(self, save_csv=False):
+        """
+        Display and optionally save object detection metrics for all prediction types.
+
+        This method prints the object-level detection metrics stored in `self.object_detection_metrics` in a 
+        well-formatted tabular view. It includes metrics such as the average object prediction score and the 
+        percentage of ground truth buildings correctly found based on prediction confidence.
+
+        Args:
+            save_csv (bool): If True, saves the metrics DataFrame as a CSV file to 
+                            `<output_folder>/results/object_detection_metrics.csv`.
+
+        Side Effects:
+            - Displays a table of object detection metrics using `print_pretty_dataframe`.
+            - Creates a `results` directory under `self.output_folder` if it does not exist.
+            - Saves a CSV file with the metrics if `save_csv=True`.
+
+        Notes:
+            - Assumes `self.object_detection_metrics` is a populated pandas DataFrame.
+            - Uses external utility `print_pretty_dataframe()` for clean formatting.
+        """
+        if save_csv:
+            os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+            self.object_detection_metrics.to_csv(os.path.join(self.output_folder, "numeric_results", "object_detection_metrics.csv"))
+
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        print_pretty_dataframe(self.object_detection_metrics, index_name="Prediction Type", float_round=6)
+
+
+    def print_object_detection_improvements(self, save_csv=False):
+        """
+        Display and optionally save object detection metric improvements between LR, SR, and HR predictions.
+
+        This method compares the object detection performance of Super-Resolution (SR) predictions against
+        Low-Resolution (LR) and High-Resolution (HR) baselines. It computes the per-metric deltas:
+        - `LR → SR Δ`: Improvement from LR to SR
+        - `HR → SR Δ`: Difference from HR to SR (positive means SR underperforms HR)
+
+        The comparison is printed in a transposed tabular format and can optionally be saved as a CSV file.
+
+        Args:
+            save_csv (bool): If True, saves the improvement comparison table to 
+                            `<output_folder>/results/object_detection_improvements.csv`.
+
+        Side Effects:
+            - Displays a formatted comparison table using `print_pretty_dataframe`.
+            - Saves the DataFrame as CSV if `save_csv=True`.
+
+        Raises:
+            AssertionError: If any of the required prediction types ("LR", "SR", "HR") are missing in `self.object_detection_metrics`.
+
+        Notes:
+            - Assumes `self.object_detection_metrics` contains metrics for "LR", "SR", and "HR".
+            - Uses external utility `print_pretty_dataframe()` for nice formatting.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        df = self.object_detection_metrics
+        assert "SR" in df.index, "SR row not found"
+        assert "LR" in df.index, "LR row not found"
+        assert "HR" in df.index, "HR row not found"
+
+        sr_row = df.loc["SR"]
+        lr_diff = df.loc["LR"] - sr_row
+        hr_diff = df.loc["HR"] - sr_row
+
+        comparison_df = pd.DataFrame({
+             "LR → SR Δ": pd.Series(lr_diff),
+            "SR": pd.Series(sr_row),
+            "HR → SR Δ": pd.Series(hr_diff)
+        })
+
+        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+
+        if save_csv:
+            os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+            comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results", "object_detection_improvements.csv"))
