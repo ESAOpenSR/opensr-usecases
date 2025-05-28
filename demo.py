@@ -64,12 +64,13 @@ sr_model = model_pl(sr_config)
 # 3. Validate -----------------------------------------------------------------------------------------------------
 # 3.1 Create Validator object
 # cpu for friendly inference
-val_obj = Validator(output_folder="data_folder", device="cuda", force_recalc= False, debugging=False)
+val_obj = Validator(output_folder="data_folder", device="cpu", force_recalc=False, debugging=False)
 
 # 3.2  Calculate images and save to Disk
-val_obj.run_predictions(dataloader_lr, lr_model, pred_type="LR", load_pkl=True)
-val_obj.run_predictions(dataloader_hr, hr_model, pred_type="HR", load_pkl=True)
-val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
+# val_obj.create_metadata_file(pred_types=['LR', 'HR', 'SR'])
+# val_obj.run_predictions(dataloader_lr, lr_model, pred_type="LR", load_pkl=True)
+# val_obj.run_predictions(dataloader_hr, hr_model, pred_type="HR", load_pkl=True)
+# val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
 
 # 3.3 - Calcuate Metrics
 # 3.3.1 Calculate Segmentation Metrics based on predictions
