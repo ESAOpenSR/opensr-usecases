@@ -561,7 +561,7 @@ class Validator:
         """
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
-            self.segmentation_metrics.to_csv(os.path.join(self.output_folder, "numeric", "segmentation_metrics.csv"))
+            self.segmentation_metrics.to_csv(os.path.join(self.output_folder, "numeric_results", "segmentation_metrics.csv"))
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
         print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
