@@ -2,7 +2,7 @@
 import torch
 from torch.utils.data import DataLoader
 from PIL import Image
-from numpy import np
+import numpy as np
 import os
 from tqdm import tqdm
 
