@@ -43,10 +43,10 @@ val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
 # 3.3.3.2 Save Some Image Examples to Disk
 val_obj.save_results_examples(num_examples=1)
 
-# 3.3.3.3 Print Segmentation Metrics to console and save to CSV
+# 3.3.3.3 Print Segmentation Metrics to console and save to CSV - Plot mAP Curve
 val_obj.print_segmentation_metrics(save_csv=True)
 val_obj.print_segmentation_improvements(save_csv=True)
-val_obj.plot_threshold_curves()
+val_obj.plot_threshold_curves(metric="Dice")
     
 # 3.3.2 Calculate Object Detection Metrics based on predictions
 #val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.75)

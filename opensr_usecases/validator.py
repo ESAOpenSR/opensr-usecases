@@ -9,18 +9,47 @@ from tqdm import tqdm
 
 class Validator:
     """
-    A class designed to validate object detection models by predicting masks and calculating metrics.
+    Validator: A class for evaluating segmentation model outputs across multiple prediction types (LR, SR, HR).
 
-    The `Validator` class utilizes an object detection analyzer to compute metrics for predicted masks
-    from models such as super-resolution (SR), low-resolution (LR), and high-resolution (HR) models.
-    It stores computed metrics in a structured dictionary and allows for the averaging of those metrics
-    across batches.
+    The `Validator` class provides a full evaluation pipeline for segmentation tasks. It handles prediction generation, 
+    storage, metric calculation, and comparison across models operating at different resolutions:
+    - LR: Low-Resolution input predictions
+    - SR: Super-Resolution input predictions
+    - HR: High-Resolution input predictions
+
+    Key Features:
+    -------------
+    - Generates and saves predictions, ground truth masks, and input images as `.npz` files.
+    - Automatically constructs and updates a metadata table (`self.metadata`) for all processed samples.
+    - Computes per-threshold segmentation metrics (IoU, Dice, Precision, Recall, Accuracy) and plots metric-threshold curves.
+    - Outputs average performance summaries per prediction type and highlights improvements of SR over LR/HR.
+    - Includes optional debugging mode for rapid testing with limited batches.
+
+    Typical Workflow:
+    -----------------
+    1. Use `run_predictions()` to compute and store predictions and metadata.
+    2. Use `calculate_segmentation_metrics()` to compute average metrics per prediction type.
+    3. Use `plot_threshold_curves()` to visualize performance variation with binarization thresholds.
+    4. Use `print_segmentation_metrics()` and `print_segmentation_improvements()` to analyze results.
+    5. Optionally save example comparisons using `save_results_examples()`.
+
+    Dependencies:
+    -------------
+    - PyTorch
+    - NumPy
+    - Pandas
+    - Matplotlib
+    - tqdm
+    - External utilities from `opensr_usecases` for metric computation and pretty-printing.
 
     Attributes:
-        device (str): The device on which the model and tensors should be loaded ("cpu" or "cuda").
-        debugging (bool): Flag to indicate whether to stop early during debugging for efficiency.
-        object_analyzer (ObjectDetectionAnalyzer): An analyzer used to compute various object detection metrics.
-        metrics (dict): A dictionary to store averaged evaluation metrics for different model types (e.g., LR, HR, SR).
+    -----------
+    - device (str): "cuda" or "cpu" — used to control model evaluation device.
+    - debugging (bool): If True, limits operations to a small number of samples/batches.
+    - output_folder (str): Directory where outputs, examples, and metadata are stored.
+    - metadata (pd.DataFrame): Table containing paths to input images, predictions, and ground truths.
+    - segmentation_metrics (pd.DataFrame): Stores average metrics per prediction type.
+    - mAP_metrics (dict): Stores threshold curve data for supported metrics.
     """
 
     def __init__(self, output_folder="data_folder", device="cpu", debugging=False):
@@ -228,11 +257,12 @@ class Validator:
             - Requires that segmentation metrics for each prediction type have been precomputed or can be calculated 
             via `self.calculate_segmentation_metrics()`.
         """
+        assert metric in ["IoU","Dice","Precision","Recall","Accuracy"], f"Metric {metric} not supported. Choose from ['IoU', 'Dice', 'Precision', 'Recall', 'Accuracy']"
         results_dict = {}
         for pred_type in tqdm(["LR", "HR", "SR"], desc="Calculating Threshold Curves..."):
 
             if str("pred_path_"+pred_type) not in self.metadata.columns:
-                print(f"No segmentation metrics found for {pred_type}. Please calculate them first. Attempting to continue...")
+                print(f"No segmentation masks found for {pred_type}. Please calculate them first. Attempting to continue...")
 
             # Iterate Over Dataset with new thresholds
             thresholds = np.arange(0.1, 1.0, 0.05)
@@ -249,6 +279,7 @@ class Validator:
                 "thresholds": thresholds_lst,
                 "scores": iou_scores
             }
+        self.mAP_metrics = results_dict # save to obj in case we need it later
         # Plot the results
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10, 6))
@@ -471,3 +502,38 @@ class Validator:
             comparison_df.to_csv(os.path.join(self.output_folder, "results", "segmentation_improvements.csv"))
 
 
+    def calculate_object_detection_metrics(self, pred_type, threshold=0.75,verbose=True):
+        """
+        Calculate object detection metrics for predicted masks of a specified prediction type.
+
+        This method computes object detection metrics such as mAP (mean Average Precision) for the predicted masks 
+        of a given prediction type (e.g., LR, HR, SR). It uses the `ObjectDetectionAnalyzer` to perform the calculations.
+
+        Args:
+            pred_type (str): Type of prediction to evaluate ("LR", "HR", or "SR").
+            threshold (float, optional): Threshold to binarize predicted masks. Default is 0.75.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the calculated object detection metrics.
+
+        Raises:
+            AssertionError: If `pred_type` is not one of the expected values.
+        """
+        # Ensure that the prediction type is valid
+        assert pred_type in ["LR","HR","SR",], "prediction type must be in ['LR', 'HR', 'SR']"
+        from opensr_usecases.segmentation.object_detection_utils import object_detection_metrics
+        from opensr_usecases.utils.dict_average import compute_average_metrics
+
+        # iterate over dataframe
+        metrics_list = []
+        for index, row in tqdm(self.metadata.iterrows(), desc=f"Calculating segmentation metrics for {pred_type}", disable=not verbose):
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            # Load predicted and ground truth masks
+            pred_mask = np.load(pred_path)["data"]
+            gt_mask = np.load(gt_path)["data"]
+
+            # Get Results Dict and append to metrics_list
+            metrics = object_detection_metrics(gt_mask, pred_mask, threshold=threshold)
+            metrics_list.append({k: v[0] for k, v in metrics.items()})  # flatten since we do one image per call
