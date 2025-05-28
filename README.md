@@ -199,10 +199,10 @@ The tool generates a table comparing SR metric improvement over LR and loss over
 ```
 
 ### mAP Curve for Detected Objects
-![mAP Curve](resources/threshold_plot.png?raw=true)
+![mAP Curve](resources/threshold_plot.png)
 
 ### mAP Curve for Detected Objects
-![example images](resources/example.png?raw=true)
+![example images](resources/example.png)
 
 ## Results and Analysis
 At the end of the validation process, you will receive a set of metrics that show how well objects were identified and segmented across different resolutions. The results will include insights into how smaller and larger objects are affected by the resolution of the input images, allowing you to understand the performance trade-offs of using super-resolution models. If required, you will also see a mAP curve for each data type prediciton.
