@@ -1,5 +1,8 @@
+
 # Custom Files
 instructions.txt
+results/
+results/*
 playground.py
 opensr_usecases/data/dataset/
 *.zip

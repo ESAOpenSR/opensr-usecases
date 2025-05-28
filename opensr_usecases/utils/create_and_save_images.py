@@ -1,5 +1,28 @@
 import matplotlib.pyplot as plt
 import os
+import torch
+import numpy as np
+
+def minmax_stretch(image):
+    """
+    Applies min-max stretching to an image tensor.
+
+    Parameters:
+    - image (torch.Tensor): The input image tensor.
+
+    Returns:
+    torch.Tensor: The stretched image tensor.
+    """
+    image_min = image.min()
+    image_max = image.max()
+    return (image - image_min) / (image_max - image_min)
+
+def minmax_percentile(img,perc=2):
+    lower = np.percentile(img,perc)
+    upper = np.percentile(img,100-perc)
+    img[img>upper] = upper
+    img[img<lower] = lower
+    return(img-np.min(img) ) / (np.max(img)-np.min(img))
 
 
 def save_images(image_dict, save_dir="results/example_images"):
@@ -54,7 +77,10 @@ def save_images(image_dict, save_dir="results/example_images"):
     for type in ["HR", "SR", "LR"]:
         assert type in image_dict.keys(), f"Key {type} not found in image_dict. Need to run analysis with image saving enabled."
     
-    gts = image_dict["HR"]["GT"]
+    # extract images
+    mask_hr = image_dict["HR"]["GT"]
+    mask_lr = image_dict["LR"]["GT"]
+    mask_sr = image_dict["SR"]["GT"]
     images_sr = image_dict["SR"]["image"]
     images_lr = image_dict["LR"]["image"]
     images_hr = image_dict["HR"]["image"]
@@ -62,7 +88,7 @@ def save_images(image_dict, save_dir="results/example_images"):
     preds_lr = image_dict["LR"]["pred"]
     preds_hr = image_dict["HR"]["pred"]
 
-    num_examples = len(gts)
+    num_examples = len(images_sr)
     
     # Ensure the output directory exists
     os.makedirs(save_dir, exist_ok=True)
@@ -85,27 +111,39 @@ def save_images(image_dict, save_dir="results/example_images"):
                                       fontsize=14, ha="right", va="center", rotation=0)
 
         # Row 1: HR
-        axes[0, 0].imshow(images_hr[i].permute(1, 2, 0).cpu().numpy())
+        images_hr_ = images_hr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_hr_ = minmax_percentile(images_hr_)
+        axes[0, 0].imshow(images_hr_)
         axes[0, 0].axis("off")
-        axes[0, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[0, 1].imshow(mask_hr[i].cpu().numpy()[0], cmap="gray")
         axes[0, 1].axis("off")
-        axes[0, 2].imshow(preds_hr[i].detach().cpu().numpy()[0], cmap="gray")
+        preds_hr_ = torch.where(preds_hr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
+        preds_hr_ = preds_hr_.cpu().numpy()[0]
+        axes[0, 2].imshow(preds_hr_, cmap="gray")
         axes[0, 2].axis("off")
 
         # Row 2: LR
-        axes[1, 0].imshow(images_lr[i].permute(1, 2, 0).cpu().numpy())
+        images_lr_ = images_lr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_lr_ = minmax_percentile(images_lr_)
+        axes[1, 0].imshow(images_lr_)
         axes[1, 0].axis("off")
-        axes[1, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[1, 1].imshow(mask_lr[i].cpu().numpy()[0], cmap="gray")
         axes[1, 1].axis("off")
-        axes[1, 2].imshow(preds_lr[i].detach().cpu().numpy()[0], cmap="gray")
+        preds_lr_ = torch.where(preds_lr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
+        preds_lr_ = preds_lr_.cpu().numpy()[0]
+        axes[1, 2].imshow(preds_lr_, cmap="gray")
         axes[1, 2].axis("off")
 
         # Row 3: SR
-        axes[2, 0].imshow(images_sr[i].permute(1, 2, 0).cpu().numpy())
+        images_sr_ = images_sr[i].permute(1, 2, 0)[:,:,:3].cpu().numpy()
+        images_sr_ = minmax_percentile(images_sr_)
+        axes[2, 0].imshow(images_sr_)
         axes[2, 0].axis("off")
-        axes[2, 1].imshow(gts[i].cpu().numpy()[0], cmap="gray")
+        axes[2, 1].imshow(mask_sr[i].cpu().numpy()[0], cmap="gray")
         axes[2, 1].axis("off")
-        axes[2, 2].imshow(preds_sr[i].detach().cpu().numpy()[0], cmap="gray")
+        preds_sr_ = torch.where(preds_sr[i] > 0.6, torch.tensor(0.9999), torch.tensor(0.0))
+        preds_sr_ = preds_sr_.cpu().numpy()[0]
+        axes[2, 2].imshow(preds_sr_, cmap="gray")
         axes[2, 2].axis("off")
 
         # Adjust layout for tightness
@@ -144,5 +182,10 @@ def create_images(dataloader,model,device="cpu",num_images=10):
             c=c+1
             images.append(im_)
             targets.append(tgt_)
-            outputs.append(model(im_.unsqueeze(0).to(device)).squeeze(0))
+            with torch.no_grad():
+                outputs.append(model(im_.unsqueeze(0).to(device)).squeeze(0).detach().cpu())
+            if c>num_images:
+                break
+        if c>num_images:
+            break
     return({"image":images,"GT":targets,"pred":outputs})
