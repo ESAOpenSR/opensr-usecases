@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 from tqdm import tqdm
+from pathlib import Path
 
 
 class Validator:
@@ -114,7 +115,6 @@ class Validator:
             # Save predictions to disk
             print(f"Running predictions for {pred_type} and saving to disk.")
             self.save_predictions(dataloader, model, pred_type)
-
 
     def save_predictions(self, dataloader, model, pred_type):
         """
@@ -248,6 +248,77 @@ class Validator:
             os.makedirs(out_path, exist_ok=True)
             self.metadata.to_pickle(os.path.join(out_path, "metadata.pkl"))
             print(f"Metadata saved to {os.path.join(out_path, 'metadata.pkl')}")
+
+    def create_metadata_file(self, pred_types=['LR', 'HR', 'SR']):
+        # 1st: accumulate all image_ids
+        # 2nd: create lists for gt paths
+        # 3rd: create lists for all ither lr/sr/hr parts
+
+        gt_path = Path(self.output_folder) / 'GT'
+        lr_path = Path(self.output_folder) / 'LR'
+        hr_path = Path(self.output_folder) / 'HR'
+        sr_path = Path(self.output_folder) / 'SR'
+
+        image_ids = []
+        gt_paths = []
+        image_path_lr, image_path_hr, image_path_sr = [], [], []
+        pred_path_lr, pred_path_hr, pred_path_sr = [], [], []
+
+        for img in tqdm(gt_path.glob('*.npz')):
+            if img.exists():
+                gt_paths.append(img)
+            else:
+                raise Exception
+
+            id = img.stem.split("_")[1]
+            image_ids.append(id)
+
+            # LR
+            lr_img = lr_path / f'image_{id}.npz'
+            lr_pred = lr_path / f'pred_{id}.npz'
+            if lr_img.exists() and lr_pred.exists():
+                image_path_lr.append(lr_img)
+                pred_path_lr.append(lr_pred)
+            else:
+                raise Exception
+
+            # HR
+            hr_img = hr_path / f'image_{id}.npz'
+            hr_pred = hr_path / f'pred_{id}.npz'
+            if hr_img.exists() and hr_pred.exists():
+                image_path_hr.append(hr_img)
+                pred_path_hr.append(hr_pred)
+            else:
+                raise Exception
+
+            # LR
+            sr_img = sr_path / f'image_{id}.npz'
+            sr_pred = sr_path / f'pred_{id}.npz'
+            if sr_img.exists() and sr_pred.exists():
+                image_path_sr.append(sr_img)
+                pred_path_sr.append(sr_pred)
+            else:
+                raise Exception
+
+        self.metadata = pd.DataFrame({
+            "image_id": image_ids,
+            "gt_path": gt_paths,
+            "image_path_LR": image_path_lr,
+            "pred_path_LR": pred_path_lr,
+            "image_path_HR": image_path_hr,
+            "pred_path_HR": pred_path_hr,
+            "image_path_SR": image_path_sr,
+            "pred_path_SR": pred_path_sr,
+        })
+
+        # If all types have been processed, save the metadata
+        if "pred_path_LR" in self.metadata.columns and "pred_path_HR" in self.metadata.columns and "pred_path_SR" in self.metadata.columns:
+            out_path = os.path.join(self.output_folder, "internal_files")
+            os.makedirs(out_path, exist_ok=True)
+            self.metadata.to_pickle(os.path.join(out_path, "metadata.pkl"))
+            self.metadata.to_csv(os.path.join(out_path, "metadata.csv"))
+            print(f"Metadata saved to {os.path.join(out_path, 'metadata.pkl')}")
+        return
 
 
     def plot_threshold_curves(self, metric="IoU"):
