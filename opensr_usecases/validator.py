@@ -193,7 +193,7 @@ class Validator:
 
                     # Ensure 3D-shaped input image
                     im_np = im.cpu().numpy()
-                    im_np = np.transpose(im[:3,:,:], (1, 2, 0))
+                    im_np = np.transpose(im_np[:3,:,:], (1, 2, 0))
 
                     # Save prediction
                     pred_out_name = os.path.join(output_dir, f"pred_{global_id}.npz")

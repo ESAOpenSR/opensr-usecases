@@ -1,4 +1,9 @@
 # 0. Imports ----------------------------------------------------------------------------------------
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+import pathlib
+
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from opensr_usecases import Validator
@@ -6,27 +11,57 @@ from opensr_usecases import Validator
 
 # 1. Get Data
 # 1.1 Get Datasets
-from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
-dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
-dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
-dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
+from opensr_usecases.data.dataset_austria import TIFDataset
+table_path = '/data/USERS/shollend/metadata/stratification_tables/test.csv'
+target_path = '/data/USERS/shollend/combined_download/output/hr_mask/'
+
+dataset_lr = TIFDataset(
+            data_table=table_path,
+            input_path='/data/USERS/shollend/sentinel2/sr_inference/bilinear/',
+            target_path=target_path,
+            phase="test",
+            image_type='sr',
+        )
+
+dataset_hr = TIFDataset(
+            data_table=table_path,
+            input_path='/data/USERS/shollend/combined_download/output/hr_orthofoto/',
+            target_path=target_path,
+            phase="test",
+            image_type='hr',
+        )
+
+dataset_sr = TIFDataset(
+            data_table=table_path,
+            input_path='/data/USERS/shollend/sentinel2/sr_inference/diffusion_simon/',
+            target_path=target_path,
+            phase="test",
+            image_type='sr_4band',
+        )
 
 # 1.2 Create DataLoaders
 dataloader_lr = DataLoader(dataset_lr, batch_size=4, shuffle=True)
 dataloader_hr = DataLoader(dataset_hr, batch_size=4, shuffle=True)
 dataloader_sr = DataLoader(dataset_sr, batch_size=4, shuffle=True)
 
-
+print('inti dataloaders')
 # 2. Get Models -----------------------------------------------------------------------------------------------------
-from opensr_usecases.models.placeholder_model import PlaceholderModel
-lr_model = PlaceholderModel()
-hr_model = PlaceholderModel()
-sr_model = PlaceholderModel()
+from opensr_usecases.models.model_files import model_pl
+from omegaconf import OmegaConf
+config_path = pathlib.Path('/home/shollend/coding/building_segmentation/logs/Samuel_building_segmentation')
+lr_config = OmegaConf.load(config_path / '2025-05-06_17-08-07' / 'train_config.yaml')
+hr_config = OmegaConf.load(config_path / '2025-05-06_17-06-13' / 'train_config.yaml')
+sr_config = OmegaConf.load(config_path / '2025-05-07_21-59-34' / 'train_config.yaml')
+
+lr_model = model_pl(lr_config)
+hr_model = model_pl(hr_config)
+sr_model = model_pl(sr_config)
 
 
 # 3. Validate -----------------------------------------------------------------------------------------------------
 # 3.1 Create Validator object
-val_obj = Validator(output_folder="data_folder", device="cpu", force_recalc= False, debugging=True)
+# cpu for friendly inference
+val_obj = Validator(output_folder="data_folder", device="cuda", force_recalc= False, debugging=False)
 
 # 3.2  Calculate images and save to Disk
 val_obj.run_predictions(dataloader_lr, lr_model, pred_type="LR", load_pkl=True)

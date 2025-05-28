@@ -12,7 +12,7 @@ from opensr_usecases import Validator
 
 # Get data
 # Initialize the datasets - For LR,SR,HR
-from opensr_usecases.data.austria_buildings import AustriaDataset
+from opensr_usecases.data.self_austria_buildings import AustriaDataset
 
 # test git
 dataset_lr = AustriaDataset(data_path=Path(r'C:\Users\PC\Desktop\TU\Master\MasterThesis\data\stratification_tables\test.csv'),
