@@ -1,59 +1,62 @@
-# global
-import torch
+# 0. Imports ----------------------------------------------------------------------------------------
 from torch.utils.data import DataLoader
-from PIL import Image
-from numpy import np
-import os
 from tqdm import tqdm
-
-# local
 from opensr_usecases import Validator
 
 
-# Get data
-# Initialize the datasets - For LR,SR,HR
+# 1. Get Data
+# 1.1 Get Datasets
 from opensr_usecases.data.placeholder_dataset import PlaceholderDataset
 dataset_lr = PlaceholderDataset(phase="test", image_type="lr")
 dataset_hr = PlaceholderDataset(phase="test", image_type="hr")
 dataset_sr = PlaceholderDataset(phase="test", image_type="sr")
 
-# Initialize dataloaders for each dataset
-dataloader_lr = DataLoader(dataset_lr, batch_size=12, shuffle=False)
-dataloader_hr = DataLoader(dataset_hr, batch_size=12, shuffle=False)
-dataloader_sr = DataLoader(dataset_sr, batch_size=12, shuffle=False)
+# 1.2 Create DataLoaders
+dataloader_lr = DataLoader(dataset_lr, batch_size=4, shuffle=True)
+dataloader_hr = DataLoader(dataset_hr, batch_size=4, shuffle=True)
+dataloader_sr = DataLoader(dataset_sr, batch_size=4, shuffle=True)
 
 
-# Get model
+# 2. Get Models -----------------------------------------------------------------------------------------------------
 from opensr_usecases.models.placeholder_model import PlaceholderModel
 lr_model = PlaceholderModel()
 hr_model = PlaceholderModel()
 sr_model = PlaceholderModel()
 
-# Create Validator object
-val_obj = Validator(debugging=False)
 
-# calculate metrics
-val_obj.calculate_masks_metrics(dataloader=dataloader_lr, model=lr_model, pred_type="LR")
-val_obj.calculate_masks_metrics(dataloader=dataloader_hr, model=hr_model, pred_type="HR")
-val_obj.calculate_masks_metrics(dataloader=dataloader_sr, model=sr_model, pred_type="SR")
+# 3. Validate -----------------------------------------------------------------------------------------------------
+# 3.1 Create Validator object
+val_obj = Validator(output_folder="data_folder", device="cpu", force_recalc= False, debugging=True)
 
-# retrieve metrics
-metrics = val_obj.return_raw_metrics()
+# 3.2  Calculate images and save to Disk
+val_obj.run_predictions(dataloader_lr, lr_model, pred_type="LR", load_pkl=True)
+val_obj.run_predictions(dataloader_hr, hr_model, pred_type="HR", load_pkl=True)
+val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
 
-# prettypring metrics
-val_obj.print_sr_improvement()
-
-# calculate mAP curves
-val_obj.get_mAP_curve(dataloader_lr, lr_model, pred_type="LR", amount_batches=10)
-val_obj.get_mAP_curve(dataloader_hr, hr_model, pred_type="HR", amount_batches=10)
-val_obj.get_mAP_curve(dataloader_sr, sr_model, pred_type="SR", amount_batches=10)
-
-# plot mAP curve
-mAP_plot = val_obj.plot_mAP_curve()
-mAP_plot.save("results/mAP_plot.png")
-
-# get Example images
-val_obj.save_pred_images(output_path="results/example_images")
+# 3.3 - Calcuate Metrics
+# 3.3.1 Calculate Segmentation Metrics based on predictions
+val_obj.calculate_segmentation_metrics(pred_type="LR", threshold=0.75)
+val_obj.calculate_segmentation_metrics(pred_type="HR", threshold=0.75)
+val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
+    
+# 3.3.2 Calculate Object Detection Metrics based on predictions
+val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.50)
+val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.50)
+val_obj.calculate_object_detection_metrics(pred_type="SR", threshold=0.50)
 
 
+# 4. Check out Results and Metrics -------------------------------------------------------------------------------------
+# 4.1 Visual Inspection
+val_obj.save_results_examples(num_examples=1)
+
+# 4.2 Check Segmentation Metrics
+val_obj.print_segmentation_metrics(save_csv=True)
+val_obj.print_segmentation_improvements(save_csv=True)
+
+# 4.3 Check Object Detection Metrics
+val_obj.print_object_detection_metrics(save_csv=True)
+val_obj.print_object_detection_improvements(save_csv=True)
+
+# 4.4 Check Threshold Curves
+val_obj.plot_threshold_curves(metric="all")
 

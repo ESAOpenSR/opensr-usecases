@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='opensr-usecases',
-    version='0.0.24',
+    version='0.1.0',
     packages=find_packages(),
     install_requires=[
         # List of dependencies
