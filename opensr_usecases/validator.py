@@ -193,7 +193,7 @@ class Validator:
 
                     # Ensure 3D-shaped input image
                     im_np = im.cpu().numpy()
-                    im_np = np.transpose(im[:3,:,:], (1, 2, 0))
+                    im_np = np.transpose(im_np[:3,:,:], (1, 2, 0))
 
                     # Save prediction
                     pred_out_name = os.path.join(output_dir, f"pred_{global_id}.npz")
@@ -414,7 +414,7 @@ class Validator:
         plt.close()
 
         
-    def save_results_examples(self, num_examples=5):
+    def save_results_examples(self, num_examples=5,threshold=0.75):
         """
         Save example image triplets (input, prediction, ground truth) for LR, SR, and HR predictions.
 
@@ -454,6 +454,9 @@ class Validator:
                     image = np.load(row[f"image_path_{pred_type}"])["data"][:,:,:3]
                     pred_mask = np.load(row[f"pred_path_{pred_type}"])["data"]
                     gt_mask = np.load(row["gt_path"])["data"]
+
+                    # thresold plot mask
+                    pred_mask = (pred_mask >= threshold).astype(np.float32)
 
                     # Min-max stretch the image
                     image = (image - np.min(image)) / (np.max(image) - np.min(image))
