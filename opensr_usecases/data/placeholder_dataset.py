@@ -5,7 +5,7 @@ import random
 import matplotlib.pyplot as plt
 
 class PlaceholderDataset(Dataset):
-    def __init__(self, num_images=25,phase="test", image_type="lr"):
+    def __init__(self, num_images=250,phase="test", image_type="lr"):
         self.height = 512
         self.width = 512
         self.num_images = num_images
@@ -20,29 +20,29 @@ class PlaceholderDataset(Dataset):
         # Create a binary mask initialized to zeros
         mask = np.zeros((self.height, self.width), dtype=np.uint8)
 
-        # Generate 5 randomly sized and placed squares
-        for _ in range(5):
-            square_size = random.randint(10, 50)  # Random size for the square
-            x = random.randint(0, self.width - square_size)
-            y = random.randint(0, self.height - square_size)
+        for _ in range(25):
+            target_area = random.randint(1, 1225)  # pixel area between 1 and 35x35
+            side = max(1, int(np.sqrt(target_area)))  # ensure side length >= 1
+
+            # Constrain to image boundaries
+            if side >= self.width or side >= self.height:
+                continue
+
+            x = random.randint(0, self.width - side)
+            y = random.randint(0, self.height - side)
 
             # Assign random color for the square (one for each band)
             color = np.random.randint(0, 256, (4,), dtype=np.uint8)
 
-            # Place the square on the image
-            image[y:y+square_size, x:x+square_size] = color
+            # Draw the square on image and mask
+            image[y:y+side, x:x+side] = color
+            mask[y:y+side, x:x+side] = 1
 
-            # Update the binary mask where the square is
-            mask[y:y+square_size, x:x+square_size] = 1
-
-        # Convert the image to a PyTorch tensor and normalize to [0, 1] range
+        # Convert the image and mask to tensors
         image_tensor = torch.tensor(image, dtype=torch.float32).permute(2, 0, 1) / 255.0
-
-        # Convert the mask to a PyTorch tensor
         mask_tensor = torch.tensor(mask, dtype=torch.float32).unsqueeze(0)
 
         return image_tensor, mask_tensor
-
 
 
 if __name__ == "__main__":

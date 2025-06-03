@@ -89,7 +89,7 @@ def compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=0.
 
 
 
-def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,threshold=None):
+def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,size_ranges, threshold=None):
     """
     Calculates the average prediction score for each object in a batch of binary masks and groups the results
     by the pixel size of the objects.
@@ -114,15 +114,7 @@ def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,th
         binary_masks = binary_masks.unsqueeze(0)
     binary_masks = binary_masks.cpu().numpy()
     predicted_masks = predicted_masks.cpu().numpy()
-        
-    # Define size ranges for grouping objects
-    size_ranges = {
-        '0-4': (0, 4),
-        '5-10': (5, 10),
-        '11-20': (11, 20),
-        '21+': (21, np.inf)
-    }
-    
+            
     # Create a dictionary to store the sum of scores and counts for each range
     results = defaultdict(lambda: {'sum': 0, 'count': 0})
     
@@ -163,5 +155,55 @@ def compute_avg_object_prediction_score_by_size(binary_masks, predicted_masks,th
             avg_scores_by_size[size_range] = None  # No objects in this size range
 
     return avg_scores_by_size
+
+
+
+def compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges, threshold=0.75):
+    """
+    Computes the percentage of ground-truth objects detected, grouped by size bin.
+
+    An object is considered found if at least one pixel in the predicted mask (after thresholding) overlaps with it.
+
+    Args:
+        gt_mask (np.ndarray): Binary ground truth mask (H, W).
+        pred_mask (np.ndarray): Predicted soft mask (H, W), values in [0,1].
+        size_ranges (dict): Dict like {'0-4': (0,4), '5-10': (5,10), ...}.
+        threshold (float): Threshold to binarize predicted mask.
+
+    Returns:
+        dict: {size_bin: percent_found}, values in [0, 100].
+    """
+    pred_bin = pred_mask >= threshold
+    labeled_gt, num_objects = label(gt_mask)
+
+    found_counts = defaultdict(int)
+    total_counts = defaultdict(int)
+
+    for object_id in range(1, num_objects + 1):
+        object_mask = (labeled_gt == object_id)
+        size = object_mask.sum()
+
+        # Find the bin this object belongs to
+        bin_name = None
+        for name, (min_size, max_size) in size_ranges.items():
+            if min_size <= size <= max_size:
+                bin_name = name
+                break
+        if bin_name is None:
+            continue  # skip if size falls outside all bins
+
+        total_counts[bin_name] += 1
+        avg_score = pred_mask[object_mask].mean()
+        if avg_score >= threshold:
+            found_counts[bin_name] += 1
+
+    result = {}
+    for bin_name in size_ranges.keys():
+        total = total_counts[bin_name]
+        found = found_counts[bin_name]
+        result[bin_name] = (found / total * 100) if total > 0 else None
+
+    return result
+
 
 
