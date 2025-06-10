@@ -24,7 +24,9 @@ class TIFDataset(Dataset):
         mask_class=41,
         band_indices=None,
         bands=4,
-        return_image_id=False,
+        return_metadata=False,
+        use_subsample=False,
+
     ):
         # own, defintely needed
         assert Path(data_table).exists()
@@ -34,8 +36,9 @@ class TIFDataset(Dataset):
         self.transform = transform
         self.image_type = image_type  # Either LR od HR
         self.mask_class = mask_class
+        self.use_subsample = use_subsample
         self.phase = phase
-        self.return_image_id = return_image_id
+        self.return_metadata = return_metadata
         # maybe, dont want to do 3band stuff
         self.bands = bands
 
@@ -66,6 +69,17 @@ class TIFDataset(Dataset):
             # other validation
         pass
 
+    def sanitize_rasterio_profile(self, profile):
+        #print(profile)
+        sanitized = dict(profile)
+        # print(sanitized)
+        # print('asasas')
+        if "crs" in sanitized and sanitized["crs"] is not None:
+            sanitized["crs"] = sanitized["crs"].to_string()  # or use .to_wkt() if needed
+        if "transform" in sanitized and sanitized["transform"] is not None:
+            sanitized["transform"] = list(sanitized["transform"])  # Convert Affine to list
+        return sanitized
+
     def __len__(self):
         return len(self.data)
 
@@ -88,6 +102,24 @@ class TIFDataset(Dataset):
         # Convert mask to binary if needed (Assumes 0/1 classes)
         mask = (mask == self.mask_class).astype(np.float32)
 
+        if self.use_subsample:
+            tile_coords = [(0, 0), (0, 256), (256, 0), (256, 256)]
+
+            # Dictionary to store all tiles with their perc_count
+            tiles_dict = {}
+
+            for top, left in tile_coords:
+                img_tile = img[:, top:top + 256, left:left + 256]
+                mask_tile = mask[top:top + 256, left:left + 256]
+                perc_count = np.count_nonzero(mask_tile)
+
+                # Store tiles in dictionary with their perc_count as value
+                tiles_dict[(top, left)] = (img_tile, mask_tile, perc_count)
+
+            # Select the tile with the highest perc_count
+            (top, left), (img, mask, _) = max(tiles_dict.items(), key=lambda x: x[1][2])
+
+
         if self.transform:
             transformed = self.transform(image=img.transpose(1, 2, 0), mask=mask)
             img_trafo = transformed["image"]
@@ -95,8 +127,8 @@ class TIFDataset(Dataset):
         else:
             raise 'No transform selected: apply at least a normalization'
 
-        if self.return_image_id:
-            return img_trafo, mask_trafo.unsqueeze(0), self.data.loc[idx, 'id']
+        if self.return_metadata:
+            return img_trafo, mask_trafo.unsqueeze(0), self.data.loc[idx, 'id'] #, (self.sanitize_rasterio_profile(img_profile))
         else:
             return img_trafo, mask_trafo.unsqueeze(0)  # Add channel dimension to mask
 

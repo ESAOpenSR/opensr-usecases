@@ -6,6 +6,8 @@ import pandas as pd
 import os
 from tqdm import tqdm
 from pathlib import Path
+import rasterio
+from affine import Affine
 
 
 class Validator:
@@ -53,7 +55,7 @@ class Validator:
     - mAP_metrics (dict): Stores threshold curve data for supported metrics.
     """
 
-    def __init__(self, output_folder="data_folder", device="cpu", force_recalc=False, debugging=False):
+    def __init__(self, output_folder="data_folder", device="cpu", force_recalc=False, debugging=False, mode='npz'):
         """
         Initializes the `Validator` class by setting the device, debugging flag, loading the object
         detection analyzer, and preparing a metrics dictionary to store evaluation results.
@@ -71,14 +73,41 @@ class Validator:
         self.debugging = debugging # If True, limits operations to a small number of samples/batches
         self.output_folder = output_folder # Directory where results will be saved
         self.force_recalc = force_recalc # If True, forces recalculation of predictions and metrics even if they exist
+        self.mode = mode
         if self.debugging:
             print(
                 "Warning: Debugging Mode is active. Only 2 Batches will be processed."
             )
 
+        assert mode in ['npz', 'tif', 'tiff']
+
         # This holds the path info and later on the metrics
         self.metadata = pd.DataFrame()
 
+    def write_img(self, img, dest_path, dest_profile=None):
+        if self.mode == 'npz':
+            np.savez_compressed(dest_path, data=img)
+        else:
+            if dest_profile is None:
+                raise ValueError('Missing profile for tif writing')
+            if img.ndim < 3:
+                # add channel dimesnion
+                img = np.expand_dims(img, axis=0)
+            with rasterio.open(dest_path, 'w', **dest_profile) as dst:
+                dst.write(img)
+        return None
+
+    def load_img(self, src_path, dtype=np.float32):
+        if self.mode == 'npz':
+            return np.load(src_path)["data"]
+        else:
+            with rasterio.open(src_path) as src:
+                data = src.read().astype(dtype)
+                # squeeze for masks
+                if data.shape[0] > 1:
+                    return data
+                else:
+                    return np.squeeze(data, axis=0)
 
     def run_predictions(self, dataloader, model, pred_type, load_pkl=False):
         """
@@ -169,14 +198,14 @@ class Validator:
         # Disable gradient computation for faster inference
         with torch.no_grad():
             # Iterate over batches of images and ground truth masks
-            total = 2 if self.debugging else len(dataloader)
+            total = 40 if self.debugging else len(dataloader)
             for id, batch in enumerate(
                 tqdm(
                     dataloader,
                     desc=f"Predicting masks and calculating metrics for {pred_type}",
                     total=total)):
                 # Unpack the batch (images and ground truth masks)
-                if dataloader.dataset.return_image_id:
+                if dataloader.dataset.return_metadata:
                     images, gt_masks, batch_image_ids = batch
                 else:
                     images, gt_masks = batch
@@ -186,14 +215,24 @@ class Validator:
                 images = images.to(self.device)
 
                 # Forward pass through the model to predict masks
-                pred_masks = model(images)
+                logits = model(images)
+                pred_masks = torch.sigmoid(logits)
 
                 for i, (im, pred, gt, image_id) in enumerate(zip(images, pred_masks, gt_masks, batch_image_ids)):
                     global_id += 1
 
+                    profile = None
+                    mask_profile = None
                     # add proper image id
-                    if dataloader.dataset.return_image_id:
+                    if dataloader.dataset.return_metadata:
                         image_id = f'{image_id:05d}'
+                        with rasterio.open(Path(dataloader.dataset.input_path) / f"{dataloader.dataset.id_prefix}_{image_id}.tif") as src_:
+                            profile = src_.profile
+                            mask_profile = src_.profile
+                            #print(mask_profile)
+
+                        # adapt count and compression
+                        mask_profile.update({'count': 1, 'compress': 'zstd', 'dtype': 'float32', 'nodata': -9999})
 
                     # Ensure 2D mask shape
                     pred = np.squeeze(pred.cpu().numpy())
@@ -204,18 +243,22 @@ class Validator:
                     im_np = np.transpose(im_np[:3,:,:], (1, 2, 0))
 
                     # Save prediction
-                    pred_out_name = os.path.join(output_dir, f"pred_{image_id}.npz")
-                    np.savez_compressed(pred_out_name, data=pred)
+                    pred_out_name = os.path.join(output_dir, f"pred_{image_id}.{self.mode}")
+                    #np.savez_compressed(pred_out_name, data=pred)
+                    self.write_img(img=pred, dest_path=pred_out_name, dest_profile=mask_profile)
 
                     # Save GT - does this for each type, but doesnt matter
-                    gt_out_name = os.path.join(gt_dir, f"gt_{image_id}.npz")
+                    gt_out_name = os.path.join(gt_dir, f"gt_{image_id}.{self.mode}")
                     # if gt doesnt exist
                     if not os.path.exists(gt_out_name):
-                        np.savez_compressed(gt_out_name, data=gt)
+                        #np.savez_compressed(gt_out_name, data=gt)
+                        self.write_img(img=gt, dest_path=gt_out_name, dest_profile=mask_profile)
 
-                    # Save input image
-                    im_out_name = os.path.join(output_dir, f"image_{image_id}.npz")
-                    np.savez_compressed(im_out_name, data=im_np)
+                    # NO NEED -just link reference maybe - Save input image
+                    im_out_name = os.path.join(output_dir, f"image_{image_id}.{self.mode}")
+                    im_out_name = Path(dataloader.dataset.input_path) / f"{dataloader.dataset.id_prefix}_{image_id}.tif"
+                    #np.savez_compressed(im_out_name, data=im_np)
+                    #self.write_img(img=im_np, dest_path=im_out_name, dest_profile=profile)
 
                     # Append paths and IDs to lists for later use
                     image_ids.append(image_id)
@@ -224,7 +267,7 @@ class Validator:
                     pred_paths.append(pred_out_name)
 
                 # Stop after x iterations for debugging mode
-                if self.debugging and id == 2:
+                if self.debugging and id == total:
                     break
 
         # 3. SAVE METADATA ------------------------------------------------------------------------------------------
@@ -264,7 +307,7 @@ class Validator:
         image_path_lr, image_path_hr, image_path_sr = [], [], []
         pred_path_lr, pred_path_hr, pred_path_sr = [], [], []
 
-        for img in tqdm(gt_path.glob('*.npz')):
+        for img in tqdm(gt_path.glob(f'*.{self.mode}')):
             if img.exists():
                 gt_paths.append(img)
             else:
@@ -274,28 +317,22 @@ class Validator:
             image_ids.append(id)
 
             # LR
-            lr_img = lr_path / f'image_{id}.npz'
-            lr_pred = lr_path / f'pred_{id}.npz'
-            if lr_img.exists() and lr_pred.exists():
-                image_path_lr.append(lr_img)
+            lr_pred = lr_path / f'pred_{id}.{self.mode}'
+            if lr_pred.exists():
                 pred_path_lr.append(lr_pred)
             else:
                 raise Exception
 
             # HR
-            hr_img = hr_path / f'image_{id}.npz'
-            hr_pred = hr_path / f'pred_{id}.npz'
-            if hr_img.exists() and hr_pred.exists():
-                image_path_hr.append(hr_img)
+            hr_pred = hr_path / f'pred_{id}.{self.mode}'
+            if hr_pred.exists():
                 pred_path_hr.append(hr_pred)
             else:
                 raise Exception
 
             # LR
-            sr_img = sr_path / f'image_{id}.npz'
-            sr_pred = sr_path / f'pred_{id}.npz'
-            if sr_img.exists() and sr_pred.exists():
-                image_path_sr.append(sr_img)
+            sr_pred = sr_path / f'pred_{id}.{self.mode}'
+            if sr_pred.exists():
                 pred_path_sr.append(sr_pred)
             else:
                 raise Exception
@@ -303,11 +340,8 @@ class Validator:
         self.metadata = pd.DataFrame({
             "image_id": image_ids,
             "gt_path": gt_paths,
-            "image_path_LR": image_path_lr,
             "pred_path_LR": pred_path_lr,
-            "image_path_HR": image_path_hr,
             "pred_path_HR": pred_path_hr,
-            "image_path_SR": image_path_sr,
             "pred_path_SR": pred_path_sr,
         })
 
@@ -319,7 +353,6 @@ class Validator:
             self.metadata.to_csv(os.path.join(out_path, "metadata.csv"))
             print(f"Metadata saved to {os.path.join(out_path, 'metadata.pkl')}")
         return
-
 
     def plot_threshold_curves(self, metric="IoU"):
         """
@@ -367,6 +400,8 @@ class Validator:
             print(f"Loading mAP_metrics from cache: {metrics_path}")
             self.mAP_metrics = pd.read_pickle(metrics_path)
 
+            print(self.mAP_metrics.keys())
+
         elif hasattr(self, "mAP_metrics") and isinstance(self.mAP_metrics, pd.DataFrame) and not self.mAP_metrics.empty:
             print(f"Using existing mAP_metrics from memory for metric {metric}.")
 
@@ -409,8 +444,6 @@ class Validator:
         os.makedirs(out_folder, exist_ok=True)
         plt.savefig(os.path.join(out_folder, f"threshold_curves_{metric.replace(' ', '_')}.png"))
         plt.close()
-
-
 
     def plot_threshold_curves_o(self, metric="IoU"):
         """
@@ -491,7 +524,6 @@ class Validator:
         os.makedirs(out_folder, exist_ok=True)
         plt.savefig(os.path.join(out_folder, str("threshold_curves_{}.png".format(metric)).replace(" ", "_") ))
         plt.close()
-
         
     def save_results_examples(self, num_examples=5):
         """
@@ -530,9 +562,10 @@ class Validator:
 
             for i, pred_type in enumerate(pred_types):
                 try:
-                    image = np.load(row[f"image_path_{pred_type}"])["data"][:,:,:3]
-                    pred_mask = np.load(row[f"pred_path_{pred_type}"])["data"]
-                    gt_mask = np.load(row["gt_path"])["data"]
+                    # fix
+                    image = self.load_img(row[f"image_path_{pred_type}"])[1:4,:,:]
+                    pred_mask = self.load_img(row[f"pred_path_{pred_type}"])
+                    gt_mask = self.load_img(row["gt_path"])
 
                     # Min-max stretch the image
                     image = (image - np.min(image)) / (np.max(image) - np.min(image))
@@ -559,7 +592,6 @@ class Validator:
             plt.close(fig)
 
         print(f"Saved {num_examples} comparison images to '{output_dir}'.")
-
 
     def calculate_segmentation_metrics(self, pred_type, threshold=0.75,return_metrics=False,verbose=True):
         """
@@ -597,8 +629,8 @@ class Validator:
             gt_path = row["gt_path"]
 
             # Load predicted and ground truth masks
-            pred_mask = np.load(pred_path)["data"]
-            gt_mask = np.load(gt_path)["data"]
+            pred_mask = self.load_img(pred_path)
+            gt_mask = self.load_img(gt_path)
 
             # Get Results Dict and append to metrics_list
             metrics = segmentation_metrics(gt_mask, pred_mask, threshold=threshold)
@@ -616,7 +648,6 @@ class Validator:
                 self.segmentation_metrics = metrics_df
             else:
                 self.segmentation_metrics = pd.concat([self.segmentation_metrics, metrics_df])
-
     
     def print_segmentation_metrics(self,save_csv=False):
         """
@@ -644,7 +675,6 @@ class Validator:
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
         print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
-
 
     def print_segmentation_improvements(self, save_csv=False):
         """
@@ -698,7 +728,6 @@ class Validator:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results", "segmentation_improvements.csv"))
 
-
     def calculate_object_detection_metrics(self, pred_type, threshold=0.75,return_metrics=False, verbose=False):
         """
         Calculate object detection metrics for predicted masks of a specified prediction type.
@@ -727,8 +756,8 @@ class Validator:
             pred_path = row[f"pred_path_{pred_type}"]
             gt_path = row["gt_path"]
 
-            pred_mask = np.load(pred_path)["data"]
-            gt_mask = np.load(gt_path)["data"]
+            pred_mask = self.load_img(pred_path)
+            gt_mask = self.load_img(gt_path)
 
             avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
             percentage_images_found.append(compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
@@ -749,7 +778,6 @@ class Validator:
                 self.object_detection_metrics = df
             else:
                 self.object_detection_metrics.loc[pred_type] = df.loc[pred_type]
-
     
     def print_object_detection_metrics(self, save_csv=False):
         """
@@ -778,7 +806,6 @@ class Validator:
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
         print_pretty_dataframe(self.object_detection_metrics, index_name="Prediction Type", float_round=6)
-
 
     def print_object_detection_improvements(self, save_csv=False):
         """
