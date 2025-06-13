@@ -1,17 +1,16 @@
 # global
 import torch
+import os
+import rasterio
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import os
+
 from tqdm import tqdm
+from collections import defaultdict
 from pathlib import Path
-import rasterio
 from affine import Affine
-import multiprocessing
-from functools import partial
-from opensr_usecases.segmentation.segmentation_utils import segmentation_metrics
-from opensr_usecases.utils.dict_average import compute_average_metrics
 
 
 def load_img(src_path, dtype=np.float32, mode='tif'):
@@ -114,6 +113,14 @@ class ValidatorAustria:
 
         # This holds the path info and later on the metrics
         self.metadata = pd.DataFrame()
+
+        # Define size ranges for grouping objects
+        self.size_ranges = {'0-4': (0, 4),
+                            '5-10': (5, 10),
+                            '11-15': (11, 15),
+                            '16-20': (16, 20),
+                            '21-30': (21, 30),
+                            '31+': (31, np.inf)}
 
     def run_predictions(self, dataloader, model, pred_type, load_pkl=False):
         """
@@ -684,7 +691,7 @@ class ValidatorAustria:
         # save all image results
         single_image_metric = pd.DataFrame.from_dict(single_image_metrics, orient='index')
         single_image_metric.index.name = 'id'
-        single_image_metric.to_csv(Path(self.metadata.iloc[0][f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'seg_single_img_{pred_type}_metrics.csv')
+        single_image_metric.to_csv(Path(self.metadata.iloc[0][f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'seg_single_img_{pred_type}.csv')
 
         # calclate mean metrics considering the indiviudal score from each image: get averages
         metrics = single_image_metric.mean().to_dict()
@@ -694,7 +701,7 @@ class ValidatorAustria:
         # Save all Raw image results
         global_image_metrics = pd.DataFrame.from_dict(global_image_metrics, orient='index')
         global_image_metrics.index.name = 'id'
-        global_image_metrics.to_csv(Path(self.metadata.iloc[0][f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'seg_global_img_{pred_type}_metrics.csv')
+        global_image_metrics.to_csv(Path(self.metadata.iloc[0][f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'seg_global_img_{pred_type}.csv')
 
         # Calculate global segmentation metrics by Sum over all image results
         global_metrics_df = self.calculate_segmentation_metrics_from_values(tp=global_image_metrics['tp'].sum(),
@@ -730,9 +737,9 @@ class ValidatorAustria:
 
     def load_individual_segmentation_metrics(self, lr_path, hr_path, sr_path):
         # Single image
-        lr_file = lr_path / 'metrics' / 'seg_single_img_LR_metrics.csv'
-        hr_file = hr_path / 'metrics' / 'seg_single_img_HR_metrics.csv'
-        sr_file = sr_path / 'metrics' / 'seg_single_img_SR_metrics.csv'
+        lr_file = lr_path / 'metrics' / 'seg_single_img_LR.csv'
+        hr_file = hr_path / 'metrics' / 'seg_single_img_HR.csv'
+        sr_file = sr_path / 'metrics' / 'seg_single_img_SR.csv'
 
         missing_files = [str(p) for p in [lr_file, hr_file, sr_file] if not p.exists()]
 
@@ -755,9 +762,9 @@ class ValidatorAustria:
         self.segmentation_metrics.to_csv(Path(self.output_folder) / "internal_files" / f'seg_single_metrics.csv')
 
         # Global image
-        lr_file = lr_path / 'metrics' / 'seg_global_img_LR_metrics.csv'
-        hr_file = hr_path / 'metrics' / 'seg_global_img_HR_metrics.csv'
-        sr_file = sr_path / 'metrics' / 'seg_global_img_SR_metrics.csv'
+        lr_file = lr_path / 'metrics' / 'seg_global_img_LR.csv'
+        hr_file = hr_path / 'metrics' / 'seg_global_img_HR.csv'
+        sr_file = sr_path / 'metrics' / 'seg_global_img_SR.csv'
 
         missing_files = [str(p) for p in [lr_file, hr_file, sr_file] if not p.exists()]
 
@@ -809,17 +816,19 @@ class ValidatorAustria:
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             self.segmentation_metrics.to_csv(
-                os.path.join(self.output_folder, "numeric_results", "segmentation_metrics.csv"))
+                os.path.join(self.output_folder, "numeric_results", "single_segmentation_metrics.csv"))
+            self.global_segmentation_metrics.to_csv(
+                os.path.join(self.output_folder, "numeric_results", "global_segmentation_metrics.csv"))
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
-        print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6)
-        print_pretty_dataframe(self.global_segmentation_metrics, index_name="Prediction Type", float_round=6)
+        print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6, table_name='Single Image Segmentation Metrics:')
+        print_pretty_dataframe(self.global_segmentation_metrics, index_name="Prediction Type", float_round=6, table_name='Global Image Segmentation Metrics:')
 
-    def print_segmentation_improvements(self, save_csv=False):
+    def print_segmentation_improvements(self, df, table_name, save_csv=False):
         """
         Display and optionally save segmentation metric improvements between LR, SR, and HR predictions.
 
-        This method compares the segmentation performance of Super-Resolution (SR) predictions against 
+        This method compares the segmentation performance of Super-Resolution (SR) predictions against
         Low-Resolution (LR) and High-Resolution (HR) baselines. It computes the per-metric deltas:
         - `LR → SR Δ`: Improvement from LR to SR
         - `HR → SR Δ`: Difference from HR to SR (positive means SR underperforms HR)
@@ -827,7 +836,7 @@ class ValidatorAustria:
         The comparison is printed in a transposed tabular format and can optionally be saved as a CSV.
 
         Args:
-            save_csv (bool): If True, saves the improvement comparison table to 
+            save_csv (bool): If True, saves the improvement comparison table to
                             `<output_folder>/results/segmentation_improvements.csv`.
 
         Side Effects:
@@ -844,7 +853,6 @@ class ValidatorAustria:
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
 
-        df = self.segmentation_metrics
         assert "SR" in df.index, "SR row not found"
         assert "LR" in df.index, "LR row not found"
         assert "HR" in df.index, "HR row not found"
@@ -861,17 +869,17 @@ class ValidatorAustria:
         })
 
         # Transpose and Print
-        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6, table_name=table_name)
 
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results", "segmentation_improvements.csv"))
 
-    def calculate_object_detection_metrics(self, pred_type, threshold=0.75, return_metrics=False, verbose=False):
+    def calculate_object_detection_metrics(self, pred_type, threshold=0.75, return_metrics=False, verbose=True):
         """
         Calculate object detection metrics for predicted masks of a specified prediction type.
 
-        This method computes object detection metrics such as mAP (mean Average Precision) for the predicted masks 
+        This method computes object detection metrics such as mAP (mean Average Precision) for the predicted masks
         of a given prediction type (e.g., LR, HR, SR). It uses the `ObjectDetectionAnalyzer` to perform the calculations.
 
         Args:
@@ -891,18 +899,26 @@ class ValidatorAustria:
 
         scores = []
         percentage_images_found = []
-        for _, row in tqdm(self.metadata.iterrows(), desc=f"Calculating object detection metrics for {pred_type}",
-                           disable=not verbose):
+
+        total = 40 if self.debugging else len(self.metadata)
+        for id, (_, row) in tqdm(enumerate(self.metadata.iterrows()), desc=f"Calculating object detection metrics for {pred_type}",
+                           disable=not verbose, total=total):
             pred_path = row[f"pred_path_{pred_type}"]
             gt_path = row["gt_path"]
 
-            pred_mask = load_img(pred_path, mode=self.mode)
-            gt_mask = load_img(gt_path, mode=self.mode)
+            # Load predicted and ground truth masks
+            pred_mask = load_img(pred_path)
+            gt_mask = load_img(gt_path)
 
-            avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
+            # pred_mask = np.load(pred_path)["data"]
+            # gt_mask = np.load(gt_path)["data"]
+
+            scores.append(compute_avg_object_prediction_score(gt_mask, pred_mask))
             percentage_images_found.append(
                 compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
-            scores.append(avg_score)
+
+            if self.debugging and id == total:
+                break
 
         # Compute mean of collected scores
         avg_result = {
@@ -910,6 +926,7 @@ class ValidatorAustria:
             "Percent of Buildings Found": np.mean(percentage_images_found),
         }
         df = pd.DataFrame([avg_result], index=[pred_type])
+        df.to_csv(Path(self.metadata.iloc[0][f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'obj_detection_{pred_type}.csv')
 
         if return_metrics:  # if wanted, return the metrics DataFrame
             return df
@@ -925,12 +942,12 @@ class ValidatorAustria:
         """
         Display and optionally save object detection metrics for all prediction types.
 
-        This method prints the object-level detection metrics stored in `self.object_detection_metrics` in a 
-        well-formatted tabular view. It includes metrics such as the average object prediction score and the 
+        This method prints the object-level detection metrics stored in `self.object_detection_metrics` in a
+        well-formatted tabular view. It includes metrics such as the average object prediction score and the
         percentage of ground truth buildings correctly found based on prediction confidence.
 
         Args:
-            save_csv (bool): If True, saves the metrics DataFrame as a CSV file to 
+            save_csv (bool): If True, saves the metrics DataFrame as a CSV file to
                             `<output_folder>/results/object_detection_metrics.csv`.
 
         Side Effects:
@@ -948,7 +965,7 @@ class ValidatorAustria:
                 os.path.join(self.output_folder, "numeric_results", "object_detection_metrics.csv"))
 
         from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
-        print_pretty_dataframe(self.object_detection_metrics, index_name="Prediction Type", float_round=6)
+        print_pretty_dataframe(self.object_detection_metrics, index_name="Prediction Type", float_round=6, table_name='Object Detection Metric:')
 
     def print_object_detection_improvements(self, save_csv=False):
         """
@@ -962,7 +979,7 @@ class ValidatorAustria:
         The comparison is printed in a transposed tabular format and can optionally be saved as a CSV file.
 
         Args:
-            save_csv (bool): If True, saves the improvement comparison table to 
+            save_csv (bool): If True, saves the improvement comparison table to
                             `<output_folder>/results/object_detection_improvements.csv`.
 
         Side Effects:
@@ -993,9 +1010,276 @@ class ValidatorAustria:
             "HR → SR Δ": pd.Series(hr_diff)
         })
 
-        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+        print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6, table_name='Object Detection Improvements:')
 
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             comparison_df.to_csv(
                 os.path.join(self.output_folder, "numeric_results", "object_detection_improvements.csv"))
+
+    def calculate_object_detection_metrics_by_size(self, pred_type, threshold=0.75, return_metrics=False,
+                                                   verbose=True):
+        """
+        Calculate object detection metrics grouped by object size for predicted masks of a specified prediction type.
+
+        Args:
+            pred_type (str): Type of prediction to evaluate ("LR", "HR", or "SR").
+            threshold (float, optional): Threshold to binarize predicted masks. Default is 0.75.
+            return_metrics (bool, optional): Whether to return the resulting DataFrame.
+            verbose (bool, optional): If True, shows progress bar.
+
+        Returns:
+            pd.DataFrame: DataFrame with average prediction scores per size bin (if return_metrics=True).
+        """
+        assert pred_type in ["LR", "HR", "SR"], "prediction type must be in ['LR', 'HR', 'SR']"
+        from opensr_usecases.object_detection.object_detection_utils import \
+            compute_avg_object_prediction_score_by_size
+
+        size_bins = self.size_ranges.keys()
+        bin_scores = defaultdict(list)
+
+        total = 40 if self.debugging else len(self.metadata)
+        for id, (_, row) in enumerate(
+                tqdm(self.metadata.iterrows(), desc=f"Calculating size-based detection metrics for {pred_type}",
+                     disable=not verbose, total=total)):
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            pred_mask = load_img(pred_path)
+            gt_mask = load_img(gt_path)
+
+            bin_avg_scores = compute_avg_object_prediction_score_by_size(gt_mask, pred_mask,
+                                                                         size_ranges=self.size_ranges,
+                                                                         threshold=threshold)
+
+            for bin_name in size_bins:
+                val = bin_avg_scores.get(bin_name)
+                if val is not None:
+                    bin_scores[bin_name].append(val)
+
+            if self.debugging and id == total:
+                break
+
+        # Aggregate averages per size bin
+        result = {bin_name: np.mean(bin_scores[bin_name]) if bin_scores[bin_name] else None for bin_name in
+                  size_bins}
+        df = pd.DataFrame([result], index=[pred_type])
+        df.to_csv(Path(self.metadata.iloc[0][
+                           f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'obj_detection_by_size_{pred_type}.csv')
+
+        if return_metrics:
+            return df
+        else:
+            if not hasattr(self,
+                           "object_detection_metrics_by_size") or self.object_detection_metrics_by_size is None or self.object_detection_metrics_by_size.empty:
+                self.object_detection_metrics_by_size = df
+            else:
+                self.object_detection_metrics_by_size.loc[pred_type] = df.loc[pred_type]
+
+    def print_object_detection_metrics_by_size(self, save_csv=False):
+        """
+        Display and optionally save segmentation and size-based object detection metrics.
+
+        This prints the main segmentation metrics and, if available, the size-binned object detection metrics.
+
+        Args:
+            save_csv (bool): If True, saves both metrics as CSV files under <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Displays tables using `print_pretty_dataframe`.
+            - Saves CSVs to disk if save_csv is True.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        results_dir = os.path.join(self.output_folder, "numeric_results")
+        os.makedirs(results_dir, exist_ok=True)
+
+        if hasattr(self, "object_detection_metrics_by_size") and self.object_detection_metrics_by_size is not None:
+            print("\nObject Detection Metrics by Object Size:")
+            print_pretty_dataframe(self.object_detection_metrics_by_size, index_name="Prediction Type",
+                                   float_round=6)
+            if save_csv:
+                self.object_detection_metrics_by_size.to_csv(
+                    os.path.join(results_dir, "object_detection_metrics_by_size.csv"))
+
+    def print_object_detection_improvements_by_size(self, save_csv=False):
+        """
+        Display and optionally save object detection metric improvements between LR, SR, and HR predictions.
+
+        Includes both global metrics and object-size-binned metrics, if available.
+
+        Args:
+            save_csv (bool): If True, saves the comparison tables as CSV files under <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Displays formatted tables using `print_pretty_dataframe`.
+            - Saves CSV files if requested.
+
+        Raises:
+            AssertionError: If required prediction types ("LR", "SR", "HR") are missing.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        results_dir = os.path.join(self.output_folder, "numeric_results")
+        os.makedirs(results_dir, exist_ok=True)
+
+        def compute_and_print_deltas(df, label):
+            assert "SR" in df.index, f"SR row not found in {label}"
+            assert "LR" in df.index, f"LR row not found in {label}"
+            assert "HR" in df.index, f"HR row not found in {label}"
+
+            sr_row = df.loc["SR"]
+            lr_diff = df.loc["LR"] - sr_row
+            hr_diff = df.loc["HR"] - sr_row
+
+            comparison_df = pd.DataFrame({
+                "LR → SR Δ": lr_diff,
+                "SR": sr_row,
+                "HR → SR Δ": hr_diff,
+            })
+
+            print(f"\nObject Detection Improvements ({label}):")
+            print_pretty_dataframe(comparison_df, index_name="Metric", float_round=6)
+
+            if save_csv:
+                comparison_df.to_csv(os.path.join(results_dir,
+                                                  f"object_detection_improvements_{label.lower().replace(' ', '_')}.csv"))
+
+        # Size-based metrics
+        if hasattr(self, "object_detection_metrics_by_size") and self.object_detection_metrics_by_size is not None:
+            compute_and_print_deltas(self.object_detection_metrics_by_size, label="Metrics by Object Size")
+
+    def calculate_percent_objects_found_by_size(self, pred_type, threshold=0.75, return_metrics=False,
+                                                verbose=True):
+        """
+        Calculate percentage of objects found per size bin for a given prediction type.
+
+        Args:
+            pred_type (str): Type of prediction to evaluate ("LR", "HR", or "SR").
+            threshold (float, optional): Threshold to binarize predicted masks. Default is 0.75.
+            return_metrics (bool, optional): Whether to return the resulting DataFrame.
+            verbose (bool, optional): If True, shows progress bar.
+
+        Returns:
+            pd.DataFrame: DataFrame with percent of objects found per size bin (if return_metrics=True).
+        """
+        assert pred_type in ["LR", "HR", "SR"], "prediction type must be in ['LR', 'HR', 'SR']"
+        from opensr_usecases.object_detection.object_detection_utils import compute_found_objects_percentage_by_size
+
+        size_bins = self.size_ranges.keys()
+        bin_percents = defaultdict(list)
+
+        total = 40 if self.debugging else len(self.metadata)
+        for id, (_, row) in enumerate(
+                tqdm(self.metadata.iterrows(), desc=f"Calculating % objects found per size bin for {pred_type}",
+                     disable=not verbose, total=total)):
+
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            pred_mask = load_img(pred_path)
+            gt_mask = load_img(gt_path)
+
+            bin_found_percents = compute_found_objects_percentage_by_size(gt_mask, pred_mask,
+                                                                          size_ranges=self.size_ranges,
+                                                                          threshold=threshold)
+
+            for bin_name in size_bins:
+                val = bin_found_percents.get(bin_name)
+                if val is not None:
+                    bin_percents[bin_name].append(val)
+
+            if self.debugging and id == total:
+                break
+
+        # Average percent of objects found per bin
+        result = {bin_name: np.mean(bin_percents[bin_name]) if bin_percents[bin_name] else None for bin_name in
+                  size_bins}
+        df = pd.DataFrame([result], index=[pred_type])
+        df.to_csv(Path(self.metadata.iloc[0][
+                           f"pred_path_{pred_type}"]).parent.parent / 'metrics' / f'obj_found_perc_by_size_{pred_type}.csv')
+
+        if return_metrics:
+            return df
+        else:
+            if not hasattr(self,
+                           "percent_objects_found_by_size") or self.percent_objects_found_by_size is None or self.percent_objects_found_by_size.empty:
+                self.percent_objects_found_by_size = df
+            else:
+                self.percent_objects_found_by_size.loc[pred_type] = df.loc[pred_type]
+
+    def print_percent_objects_found_by_size(self, save_csv=False):
+        """
+        Display and optionally save size-based object detection metrics.
+
+        This includes both:
+        - Average prediction scores per object size bin.
+        - Percentage of objects found per size bin.
+
+        Args:
+            save_csv (bool): If True, saves CSVs under <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Displays tables using `print_pretty_dataframe`.
+            - Saves CSVs to disk if save_csv is True.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        results_dir = os.path.join(self.output_folder, "numeric_results")
+        os.makedirs(results_dir, exist_ok=True)
+
+        if hasattr(self, "object_detection_metrics_by_size") and self.object_detection_metrics_by_size is not None:
+            print("\nAverage Prediction Score by Object Size Bin:")
+            print_pretty_dataframe(self.object_detection_metrics_by_size, index_name="Prediction Type",
+                                   float_round=6)
+            if save_csv:
+                self.object_detection_metrics_by_size.to_csv(
+                    os.path.join(results_dir, "object_detection_metrics_by_size.csv")
+                )
+
+        if hasattr(self, "percent_objects_found_by_size") and self.percent_objects_found_by_size is not None:
+            print("\nPercent of Objects Found by Object Size Bin:")
+            print_pretty_dataframe(self.percent_objects_found_by_size, index_name="Prediction Type", float_round=2)
+            if save_csv:
+                self.percent_objects_found_by_size.to_csv(
+                    os.path.join(results_dir, "percent_objects_found_by_size.csv")
+                )
+
+    def print_percent_objects_found_improvements_by_size(self, save_csv=False):
+        """
+        Display and optionally save percent-found improvements between LR, SR, and HR by object size bin.
+
+        This compares how many objects were found per size bin, for SR vs LR and HR.
+
+        Args:
+            save_csv (bool): If True, saves the comparison table as CSV under <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Prints formatted comparison table.
+            - Saves CSV if requested.
+
+        Raises:
+            AssertionError: If "LR", "SR", or "HR" are missing in `self.percent_objects_found_by_size`.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        df = self.percent_objects_found_by_size
+        assert "SR" in df.index, "SR row not found"
+        assert "LR" in df.index, "LR row not found"
+        assert "HR" in df.index, "HR row not found"
+
+        sr_row = df.loc["SR"]
+        lr_diff = df.loc["LR"] - sr_row
+        hr_diff = df.loc["HR"] - sr_row
+
+        comparison_df = pd.DataFrame({
+            "LR → SR Δ": lr_diff,
+            "SR": sr_row,
+            "HR → SR Δ": hr_diff
+        })
+
+        print("\nPercent of Objects Found by Size Bin – SR vs LR/HR:")
+        print_pretty_dataframe(comparison_df, index_name="Size Bin", float_round=2)
+
+        if save_csv:
+            os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+            comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results",
+                                              "percent_objects_found_by_size_improvements.csv"))
+

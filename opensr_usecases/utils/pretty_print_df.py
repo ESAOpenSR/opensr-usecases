@@ -1,6 +1,6 @@
 from prettytable import PrettyTable
 
-def print_pretty_dataframe(df, index_name="", float_round=4):
+def print_pretty_dataframe(df, index_name="", float_round=4, table_name=None):
     """
     Pretty-print any pandas DataFrame using PrettyTable.
 
@@ -18,4 +18,6 @@ def print_pretty_dataframe(df, index_name="", float_round=4):
         values = [round(v, float_round) if isinstance(v, float) else v for v in row.values]
         table.add_row([idx] + values)
 
+    if table_name is not None:
+        print(table_name)
     print(table)

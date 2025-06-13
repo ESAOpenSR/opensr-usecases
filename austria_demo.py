@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     predict = False
 
-    val_obj = ValidatorAustria(output_folder="data_folder/validate", device="cpu", force_recalc=False, debugging=True, mode='tif')
+    val_obj = ValidatorAustria(output_folder="data_folder/bilinear_newdiffusion", device="cpu", force_recalc=False, debugging=False, mode='tif')
 
     if predict:
         print('inti dataloaders')
@@ -136,31 +136,51 @@ if __name__ == '__main__':
             val_obj.calculate_segmentation_metrics(pred_type="HR", threshold=0.75)
             val_obj.calculate_segmentation_metrics(pred_type="SR", threshold=0.75)
         else:
-            val_obj.segmentation_metrics = pd.read_csv(os.path.join(val_obj.output_folder, "numeric_results", "segmentation_metrics.csv"), index_col='pred_type')
+            val_obj.segmentation_metrics = pd.read_csv(os.path.join(val_obj.output_folder, "numeric_results", "single_segmentation_metrics.csv"), index_col='pred_type')
+            val_obj.global_segmentation_metrics = pd.read_csv(os.path.join(val_obj.output_folder, "numeric_results", "global_segmentation_metrics.csv"), index_col='pred_type')
 
     # 4.2 Check Segmentation Metrics
     val_obj.print_segmentation_metrics(save_csv=True)
-    val_obj.print_segmentation_improvements(save_csv=True)
-
-    raise TypeError
+    val_obj.print_segmentation_improvements(save_csv=False, df=val_obj.segmentation_metrics, table_name='Single Segmentation Metrics Improvements:')
+    val_obj.print_segmentation_improvements(save_csv=False, df=val_obj.global_segmentation_metrics, table_name='Global Segmentation Metrics Improvements:')
 
     # 3.3.2 Calculate Object Detection Metrics based on predictions
     val_obj.calculate_object_detection_metrics(pred_type="LR", threshold=0.75)
     val_obj.calculate_object_detection_metrics(pred_type="HR", threshold=0.75)
     val_obj.calculate_object_detection_metrics(pred_type="SR", threshold=0.75)
 
-
-    # 4. Check out Results and Metrics -------------------------------------------------------------------------------------
-
     # 4.3 Check Object Detection Metrics
     val_obj.print_object_detection_metrics(save_csv=True)
     val_obj.print_object_detection_improvements(save_csv=True)
 
+    # 3.3.3 Calculate Object Detection Metrics by Object Sizes
+    val_obj.calculate_object_detection_metrics_by_size(pred_type="LR", threshold=0.75)
+    val_obj.calculate_object_detection_metrics_by_size(pred_type="HR", threshold=0.75)
+    val_obj.calculate_object_detection_metrics_by_size(pred_type="SR", threshold=0.75)
 
-    val_obj.save_results_examples(num_examples=1)
+    # 4.4 Check Object Detection Metrics by Size
+    val_obj.print_object_detection_metrics_by_size(save_csv=True)
+    val_obj.print_object_detection_improvements_by_size(save_csv=True)
 
-    # 4.4 Check Threshold Curves
-    val_obj.plot_threshold_curves(metric="all")
+    # 3.3.4 Calculate Percent of Objects Found by Size
+    val_obj.calculate_percent_objects_found_by_size(pred_type="LR", threshold=0.75)
+    val_obj.calculate_percent_objects_found_by_size(pred_type="HR", threshold=0.75)
+    val_obj.calculate_percent_objects_found_by_size(pred_type="SR", threshold=0.75)
+
+    # 4.5 Check Object Detection Percent of Objects found - by Size
+    val_obj.print_percent_objects_found_by_size(save_csv=True)
+    val_obj.print_percent_objects_found_improvements_by_size(save_csv=True)
+
+
+    # 4.3 Check Object Detection Metrics
+    # val_obj.print_object_detection_metrics(save_csv=True)
+    # val_obj.print_object_detection_improvements(save_csv=True)
+
+    #
+    # val_obj.save_results_examples(num_examples=1)
+    #
+    # # 4.4 Check Threshold Curves
+    # val_obj.plot_threshold_curves(metric="all")
 
 
 
