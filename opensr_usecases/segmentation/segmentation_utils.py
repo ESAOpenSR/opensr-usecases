@@ -25,8 +25,21 @@ def segmentation_metrics(binary_masks, predicted_masks, threshold=0.75):
         "Dice": [],
         "Precision": [],
         "Recall": [],
-        "Accuracy": []
+        "Accuracy": [],
+
     }
+
+    metrics_global = {"tp": [],
+        "fp": [],
+        "fn": [],
+        "tn": []}
+
+    if binary_masks.ndim == 2:
+        binary_masks = np.expand_dims(binary_masks, axis=0)
+    if predicted_binary_masks.ndim == 2:
+        predicted_binary_masks = np.expand_dims(predicted_binary_masks, axis=0)
+
+
     batch_size = binary_masks.shape[0]
 
     for i in range(batch_size):
@@ -60,6 +73,10 @@ def segmentation_metrics(binary_masks, predicted_masks, threshold=0.75):
         results["Precision"].append(precision)
         results["Recall"].append(recall)
         results["Accuracy"].append(accuracy)
+        metrics_global["tp"].append(tp)
+        metrics_global["fp"].append(fp)
+        metrics_global["fn"].append(fn)
+        metrics_global["tn"].append(tn)
 
-    return results
+    return results, metrics_global
 
