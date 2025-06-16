@@ -11,7 +11,7 @@ import pathlib
 
 
 # local
-from opensr_usecases import Validator, ValidatorAustria
+from opensr_usecases import Validator, ValidatorAustria, ValidatorAustriaSingleShot
 from opensr_usecases.data.dataset_austria import InferredDataset
 
 # Initialize the datasets - For LR,SR,HR

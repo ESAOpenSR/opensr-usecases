@@ -1,2 +1,3 @@
 from .validator import Validator
 from .validator_austria import ValidatorAustria
+from .validator_austria_single_shot import ValidatorAustriaSingleShot
