@@ -81,8 +81,8 @@ def compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=0.
     found_objects = 0
     for object_id in range(1, num_objects + 1):
         object_region = labeled_mask == object_id
-        avg_score = pred_mask[object_region].mean()
-        if avg_score >= confidence_threshold:
+        #avg_score = pred_mask[object_region].mean()
+        if (pred_mask[object_region] >= confidence_threshold).any():
             found_objects += 1
 
     return (found_objects / num_objects) * 100
@@ -193,8 +193,8 @@ def compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges, th
             continue  # skip if size falls outside all bins
 
         total_counts[bin_name] += 1
-        avg_score = pred_mask[object_mask].mean()
-        if avg_score >= threshold:
+        #avg_score = pred_mask[object_mask].mean()
+        if (pred_mask[object_mask] >= threshold).any():
             found_counts[bin_name] += 1
 
     result = {}
@@ -204,6 +204,4 @@ def compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges, th
         result[bin_name] = (found / total * 100) if total > 0 else None
 
     return result
-
-
 

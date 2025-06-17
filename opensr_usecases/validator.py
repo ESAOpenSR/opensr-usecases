@@ -531,6 +531,10 @@ class Validator:
             # Load predicted and ground truth masks
             pred_mask = np.load(pred_path)["data"]
             gt_mask = np.load(gt_path)["data"]
+            
+            # add check to see if there are GT obeservations
+            if np.sum(gt_mask) == 0:
+                continue
 
             # Get Results Dict and append to metrics_list
             metrics = segmentation_metrics(gt_mask, pred_mask, threshold=threshold)
@@ -661,6 +665,10 @@ class Validator:
 
             pred_mask = np.load(pred_path)["data"]
             gt_mask = np.load(gt_path)["data"]
+            
+            # add check to see if there are GT obeservations
+            if np.sum(gt_mask) == 0:
+                continue
 
             avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
             percentage_images_found.append(compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
@@ -789,6 +797,10 @@ class Validator:
 
             pred_mask = np.load(pred_path)["data"]
             gt_mask = np.load(gt_path)["data"]
+            
+            # add check to see if there are GT obeservations
+            if np.sum(gt_mask) == 0:
+                continue
 
             bin_avg_scores = compute_avg_object_prediction_score_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
 
@@ -906,6 +918,10 @@ class Validator:
 
             pred_mask = np.load(pred_path)["data"]
             gt_mask = np.load(gt_path)["data"]
+            
+            # add check to see if there are GT obeservations
+            if np.sum(gt_mask) == 0:
+                continue
 
             bin_found_percents = compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
 
