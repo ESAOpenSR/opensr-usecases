@@ -465,7 +465,6 @@ class ValidatorAustriaSingleShot:
                     if val_perc is not None:
                         bin_percents[bin_name].append(val_perc)
 
-
                 if self.debugging and id == total:
                     break
 
@@ -742,7 +741,6 @@ class ValidatorAustriaSingleShot:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             comparison_df.to_csv(
                 os.path.join(self.output_folder, "numeric_results", "object_detection_improvements.csv"))
-
 
     def print_object_detection_metrics_by_size(self, save_csv=False):
         """

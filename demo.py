@@ -84,17 +84,6 @@ if __name__ == '__main__':
     hr_config = OmegaConf.load(config_path / hr_run/ 'train_config.yaml')
     sr_config = OmegaConf.load(config_path / sr_run / 'train_config.yaml')
 
-    ### just pred
-    sr_model = model_pl(sr_config)
-    sr_weights = list(pathlib.Path(ckpt_base_path.replace("RUN", sr_run)).glob('epoch=*.ckpt'))[0]
-    print(sr_weights)
-    sr_ckpt = torch.load(sr_weights, map_location='cpu')
-    sr_model.load_state_dict(sr_ckpt['state_dict'])
-
-    val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
-
-    raise TypeError
-
     lr_model = model_pl(lr_config)
     lr_weights = list(pathlib.Path(ckpt_base_path.replace("RUN", lr_run)).glob('epoch=*.ckpt'))[0]
     print(lr_weights)
@@ -117,19 +106,6 @@ if __name__ == '__main__':
     sr_model.load_state_dict(sr_ckpt['state_dict'])
 
     val_obj.run_predictions(dataloader_sr, sr_model, pred_type="SR", load_pkl=True)
-    #
-    # p1 = Process(target=run_inference, args=(lr_config, lr_run, dataloader_lr, "LR", model_pl, ckpt_base_path, val_obj))
-    # p2 = Process(target=run_inference, args=(hr_config, hr_run, dataloader_hr, "HR", model_pl, ckpt_base_path, val_obj))
-    # p3 = Process(target=run_inference, args=(sr_config, sr_run, dataloader_sr, "SR", model_pl, ckpt_base_path, val_obj))
-    #
-    # p1.start()
-    # p2.start()
-    # p3.start()
-    #
-    # p1.join()
-    # p2.join()
-    # p3.join()
-
 
     # 3.2  Calculate images and save to Disk
     #val_obj.create_metadata_file(pred_types=['LR', 'HR', 'SR'])
