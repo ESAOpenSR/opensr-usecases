@@ -26,7 +26,7 @@ sr_model = PlaceholderModel()
 
 # 3. Validate -----------------------------------------------------------------------------------------------------
 # 3.1 Create Validator object and set settings
-val_obj = Validator(output_folder="data_folder", device="cpu", force_recalc= True, debugging=False)
+val_obj = Validator(output_folder="data_folder_test", device="cpu", force_recalc= True, debugging=True)
 global_threshold = 0.50
 
 # 3.2  Calculate images and save to Disk
@@ -55,6 +55,11 @@ val_obj.calculate_percent_objects_found_by_size(pred_type="LR", threshold=global
 val_obj.calculate_percent_objects_found_by_size(pred_type="HR", threshold=global_threshold)
 val_obj.calculate_percent_objects_found_by_size(pred_type="SR", threshold=global_threshold)
 
+# 3.3.5 Update Object Identification Stats by Size (by total objects in dataset, not patched)
+val_obj.update_object_identification_stats_by_size(pred_type="LR", threshold=global_threshold, verbose=True)
+val_obj.update_object_identification_stats_by_size(pred_type="SR", threshold=global_threshold, verbose=True)
+val_obj.update_object_identification_stats_by_size(pred_type="HR", threshold=global_threshold, verbose=True)
+
 
 # 4. Check out Results and Metrics -------------------------------------------------------------------------------------
 # 4.1 Visual Inspection
@@ -76,6 +81,9 @@ val_obj.print_object_detection_improvements_by_size(save_csv=True)
 val_obj.print_percent_objects_found_by_size(save_csv=True)
 val_obj.print_percent_objects_found_improvements_by_size(save_csv=True)
 
-# 4.4 Check Threshold Curves
-val_obj.plot_threshold_curves(metric="all")
+# 4.6 Check Object Identification Stats by Size - this is the total number of objects in the dataset, not patched
+val_obj.print_object_identification_stats_by_size(save_csv=True)
+val_obj.print_object_identification_improvements_by_size(save_csv=True)
 
+# 4.7 Check Threshold Curves
+val_obj.plot_threshold_curves(metric="all")

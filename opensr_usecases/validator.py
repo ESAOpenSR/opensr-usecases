@@ -1020,3 +1020,154 @@ class Validator:
         if save_csv:
             os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
             comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results", "percent_objects_found_by_size_improvements.csv"))
+            
+            
+    def update_object_identification_stats_by_size(self, pred_type, threshold=0.75, verbose=False):
+        """
+        Update internal statistics on true/false/total counts of object detection per size bin.
+
+        Args:
+            pred_type (str): One of 'LR', 'HR', 'SR'.
+            threshold (float): Threshold to binarize predicted masks. Default is 0.75.
+            verbose (bool): Whether to show progress bar.
+        """
+        assert pred_type in ["LR", "HR", "SR"], "prediction type must be in ['LR', 'HR', 'SR']"
+        from opensr_usecases.object_detection.object_detection_utils import compute_object_detection_per_instance
+
+        # Initialize tracking dictionary if it doesn't exist
+        if not hasattr(self, "object_identification_stats"):
+            self.object_identification_stats = {
+                bin_name: {pt: {"true": 0, "false": 0, "total": 0} for pt in ["LR", "HR", "SR"]}
+                for bin_name in self.size_ranges
+            }
+
+        for _, row in tqdm(self.metadata.iterrows(), desc=f"Updating stats for {pred_type}", disable=not verbose):
+            pred_path = row[f"pred_path_{pred_type}"]
+            gt_path = row["gt_path"]
+
+            pred_mask = np.load(pred_path)["data"]
+            gt_mask = np.load(gt_path)["data"]
+
+            if np.sum(gt_mask) == 0:
+                continue
+
+            # Binarize prediction
+            if pred_mask.dtype != bool:
+                pred_mask = pred_mask >= threshold
+
+            # Compute per-object detection result
+            # Must return list of tuples: [(size, matched: bool), ...]
+            detected_objects = compute_object_detection_per_instance(gt_mask, pred_mask)
+
+            # Assign to size bin and update counters
+            for obj_size, matched in detected_objects:
+                for bin_name, (low, high) in self.size_ranges.items():
+                    if low <= obj_size <= high:
+                        stats = self.object_identification_stats[bin_name][pred_type]
+                        stats["true"]  += int(matched)
+                        stats["false"] += int(not matched)
+                        stats["total"] += 1
+                        break
+
+    def print_object_identification_stats_by_size(self, save_csv=False):
+        """
+        Display and optionally save object identification stats by size bin and prediction type.
+
+        Groups output so that each prediction type (LR, SR, HR) appears once, with all its size bins underneath.
+
+        Args:
+            save_csv (bool): If True, saves results to <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Prints a clean grouped table.
+            - Saves CSV if requested.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        ordered_pred_types = ["LR", "SR", "HR"]
+        ordered_size_bins = list(self.size_ranges.keys())
+
+        rows = []
+        for pred_type in ordered_pred_types:
+            for bin_name in ordered_size_bins:
+                stats = self.object_identification_stats[bin_name][pred_type]
+                total = int(stats["total"])
+                true = int(stats["true"])
+                false = int(stats["false"])
+                percent_found = round(100 * true / total, 1) if total > 0 else None
+                rows.append({
+                    "Prediction Type": pred_type,
+                    "Size Bin": bin_name,
+                    "Total": total,
+                    "True Positives": true,
+                    "False Negatives": false,
+                    "% Found": percent_found
+                })
+
+        df = pd.DataFrame(rows)
+        df = df.astype({
+            "Total": "int",
+            "True Positives": "int",
+            "False Negatives": "int"
+        })
+
+        print("\nObject Identification Stats by Size Bin:")
+        print_pretty_dataframe(
+            df.set_index(["Prediction Type", "Size Bin"]),
+            float_round=1
+        )
+
+        if save_csv:
+            results_dir = os.path.join(self.output_folder, "numeric_results")
+            os.makedirs(results_dir, exist_ok=True)
+            df.to_csv(os.path.join(results_dir, "object_identification_stats_by_size.csv"), index=False)
+
+
+
+    def print_object_identification_improvements_by_size(self, save_csv=False):
+        """
+        Display and optionally save improvement in object identification (% found) for SR over LR and HR.
+
+        Args:
+            save_csv (bool): If True, saves to <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Prints comparison table.
+            - Saves to disk if requested.
+
+        Raises:
+            AssertionError: If required entries are missing.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        # Build % found table
+        percent_found = {
+            pred_type: {
+                bin_name: (
+                    100 * stats["true"] / stats["total"] if stats["total"] > 0 else None
+                )
+                for bin_name, preds in self.object_identification_stats.items()
+                for pred_type_check, stats in preds.items()
+                if pred_type_check == pred_type
+            }
+            for pred_type in ["LR", "SR", "HR"]
+        }
+
+        df = pd.DataFrame(percent_found).T  # Prediction Type as index
+
+        assert "SR" in df.index and "LR" in df.index and "HR" in df.index, "Missing required prediction types."
+
+        sr = df.loc["SR"]
+        comparison_df = pd.DataFrame({
+            "LR → SR Δ": sr - df.loc["LR"],
+            "SR": sr,
+            "HR → SR Δ": sr - df.loc["HR"]
+        })
+
+        print("\nImprovement in Object Identification (% Found) – SR vs LR/HR:")
+        print_pretty_dataframe(comparison_df, index_name="Size Bin", float_round=2)
+
+        if save_csv:
+            results_dir = os.path.join(self.output_folder, "numeric_results")
+            os.makedirs(results_dir, exist_ok=True)
+            comparison_df.to_csv(os.path.join(results_dir, "object_identification_improvements_by_size.csv"))

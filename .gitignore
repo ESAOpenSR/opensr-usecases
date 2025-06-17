@@ -9,6 +9,7 @@ opensr_usecases/data/dataset/
 temp/
 data_folder/
 data_folder/*
+data_folder*
 
 # Python specific
 *.py[cod]

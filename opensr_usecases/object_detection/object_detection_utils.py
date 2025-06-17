@@ -205,3 +205,26 @@ def compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges, th
 
     return result
 
+
+
+def compute_object_detection_per_instance(gt_mask, pred_mask):
+    """
+    For each object in the GT mask, check if it overlaps with any predicted object.
+
+    Args:
+        gt_mask (np.ndarray): Ground truth binary mask.
+        pred_mask (np.ndarray): Predicted binary mask (same shape).
+
+    Returns:
+        List of tuples: [(size_in_pixels, matched_bool), ...]
+    """
+    labeled_gt, num_gt = label(gt_mask)
+    detected = []
+
+    for obj_id in range(1, num_gt + 1):
+        obj_mask = (labeled_gt == obj_id)
+        obj_size = np.sum(obj_mask)
+        matched = np.any(pred_mask[obj_mask])
+        detected.append((obj_size, matched))
+
+    return detected
