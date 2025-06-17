@@ -114,7 +114,7 @@ class Validator:
 
 
         metadata_path = os.path.join(self.output_folder,"internal_files", "metadata.pkl")
-        if load_pkl and os.path.exists(metadata_path) and not self.force_recalc:
+        if load_pkl and os.path.exists(metadata_path):
             # Load metadata from pickle file - Fast
             print("Loading existing metadata from disk, masks have been previously calculated")
             self.metadata = pd.read_pickle(metadata_path)
