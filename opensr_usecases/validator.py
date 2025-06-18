@@ -534,10 +534,9 @@ class Validator:
             
             # add check to see if there are GT obeservations
             if np.sum(gt_mask) == 0:
-                metrics = {k: np.nan for k in segmentation_metrics(gt_mask, pred_mask, threshold=threshold).keys()}
-            else:
+                continue
                 # Get Results Dict and append to metrics_list
-                metrics = segmentation_metrics(gt_mask, pred_mask, threshold=threshold)
+            metrics = segmentation_metrics(gt_mask, pred_mask, threshold=threshold)
             metrics_list.append({k: v[0] for k, v in metrics.items()})  # flatten since we do one image per call
 
         # Get average over Patches
@@ -668,10 +667,8 @@ class Validator:
             
             # add check to see if there are GT obeservations
             if np.sum(gt_mask) == 0:
-                avg_score = {k: np.nan for k in compute_avg_object_prediction_score(gt_mask, pred_mask, threshold=threshold).keys()}
-            else:
-                # Compute average object prediction score and percentage of buildings found
-                avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
+                continue
+            avg_score = compute_avg_object_prediction_score(gt_mask, pred_mask)
             percentage_images_found.append(compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
             scores.append(avg_score)
 
@@ -801,9 +798,8 @@ class Validator:
             
             # add check to see if there are GT obeservations
             if np.sum(gt_mask) == 0:
-                bin_avg_scores = {k: np.nan for k in compute_avg_object_prediction_score_by_size(gt_mask, pred_mask, threshold=threshold).keys()}
-            else:
-                bin_avg_scores = compute_avg_object_prediction_score_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
+                continue
+            bin_avg_scores = compute_avg_object_prediction_score_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
 
             for bin_name in size_bins:
                 val = bin_avg_scores.get(bin_name)
@@ -922,9 +918,8 @@ class Validator:
             
             # add check to see if there are GT obeservations
             if np.sum(gt_mask) == 0:
-                bin_found_percents = {k: np.nan for k in compute_found_objects_percentage_by_size(gt_mask, pred_mask, threshold=threshold).keys()}
-            else:
-                bin_found_percents = compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
+                continue
+            bin_found_percents = compute_found_objects_percentage_by_size(gt_mask, pred_mask, size_ranges=self.size_ranges, threshold=threshold)
 
             for bin_name in size_bins:
                 val = bin_found_percents.get(bin_name)
@@ -1050,17 +1045,15 @@ class Validator:
             gt_mask = np.load(gt_path)["data"]
 
             if np.sum(gt_mask) == 0:
-                if pred_mask.dtype != bool:
-                    pred_mask = pred_mask >= threshold
-                detected_objects = {k: np.nan for k in compute_object_detection_per_instance(gt_mask, pred_mask, threshold=threshold).keys()}
-            else:
-                # Binarize prediction
-                if pred_mask.dtype != bool:
-                    pred_mask = pred_mask >= threshold
+                continue
 
-                # Compute per-object detection result
-                # Must return list of tuples: [(size, matched: bool), ...]
-                detected_objects = compute_object_detection_per_instance(gt_mask, pred_mask)
+            # Binarize prediction
+            if pred_mask.dtype != bool:
+                pred_mask = pred_mask >= threshold
+
+            # Compute per-object detection result
+            # Must return list of tuples: [(size, matched: bool), ...]
+            detected_objects = compute_object_detection_per_instance(gt_mask, pred_mask)
 
             # Assign to size bin and update counters
             for obj_size, matched in detected_objects:
