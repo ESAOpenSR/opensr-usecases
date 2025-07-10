@@ -384,12 +384,33 @@ class ValidatorAustriaSingleShot:
                         f'seg_global_img_{pred_type}.csv',
                         f'obj_detection_{pred_type}.csv',
                         f'obj_detection_by_size_{pred_type}.csv',
-                        f'obj_found_perc_by_size_{pred_type}.csv']
+                        f'obj_found_perc_by_size_{pred_type}.csv',
+                        f'all_single_img_{pred_type}.csv']
 
         files_exist = [(base / self.metric_folder / file).exists() for file in metric_files]
 
+        stratification_metadata = pd.read_csv('/data/USERS/shollend/metadata/stratification_tables/test.csv')
+        stratification_metadata = stratification_metadata[['id', 'assigned_class']]
+
+        stratification_metadata['image_id'] = stratification_metadata['id'].astype(str)
+        self.metadata['image_id'] = self.metadata['image_id'].astype(str)
+
+        merged = pd.merge(self.metadata, stratification_metadata, left_on='image_id', right_on='image_id')
+        per_img_metrics = {f'seg_single_img_{pred_type}': [],
+                         f'seg_global_img_{pred_type}': [],
+                         f'obj_detection_{pred_type}': [],
+                         f'obj_detection_by_size_{pred_type}': [],
+                         f'obj_found_perc_by_size_{pred_type}': []}
+
+        single_img_results = []
+
         if all(files_exist):
             print(f'{pred_type}: Loading pre-computed files instead of calculating again.')
+            all_single_img = pd.read_csv(base / self.metric_folder / f'all_single_img_{pred_type}.csv')
+            all_metrics = all_single_img.drop(columns='image_id').mean(skipna=True).to_dict()
+            all_metrics_df = pd.DataFrame([all_metrics], index=[pred_type])
+            all_metrics_df.index.name = 'pred_type'
+
             single_image_metric = pd.read_csv(base / self.metric_folder / f'seg_single_img_{pred_type}.csv')
 
             metrics = single_image_metric.mean().to_dict()
@@ -429,8 +450,9 @@ class ValidatorAustriaSingleShot:
 
             total = 40 if self.debugging else len(self.metadata)
             for id, (index, row) in enumerate(
-                    tqdm(self.metadata.iterrows(), desc=f"Calculating ALL metrics for {pred_type}",
+                    tqdm(merged.iterrows(), desc=f"Calculating ALL metrics for {pred_type}",
                          disable=not verbose, total=total)):
+
                 pred_path = row[f"pred_path_{pred_type}"]
                 gt_path = row["gt_path"]
 
@@ -444,9 +466,10 @@ class ValidatorAustriaSingleShot:
                 global_image_metrics[f'{int(row["image_id"]):05d}'] = {k: v[0] for k, v in metrics_global.items()}
 
                 # Object detection
-                scores.append(compute_avg_object_prediction_score(gt_mask, pred_mask))
-                percentage_images_found.append(
-                    compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold))
+                score = compute_avg_object_prediction_score(gt_mask, pred_mask)
+                scores.append(score)
+                percentage_images_found_score = compute_found_objects_percentage(gt_mask, pred_mask, confidence_threshold=threshold)
+                percentage_images_found.append(percentage_images_found_score)
 
                 # Object detection by size
                 bin_avg_scores = compute_avg_object_prediction_score_by_size(gt_mask, pred_mask,
@@ -457,16 +480,47 @@ class ValidatorAustriaSingleShot:
                                                                               size_ranges=self.size_ranges,
                                                                               threshold=threshold)
 
+                image_metrics = {}
+                image_metrics['image_id'] = f'{int(row["image_id"]):05d}'
+                image_metrics['assigned_class'] = row["assigned_class"]
+
+                for k, v in metrics.items():
+                    image_metrics[k] = float(v[0])
+                image_metrics['avg_object_prediction'] = score
+                image_metrics['found_objects_percentage'] = percentage_images_found_score
+
                 for bin_name in size_bins:
                     val_avg = bin_avg_scores.get(bin_name)
                     if val_avg is not None:
                         bin_scores[bin_name].append(val_avg)
+                        image_metrics[f'bin_scores_{bin_name}'] = val_avg
+                    else:
+                        bin_scores[bin_name].append(None)
+                        image_metrics[f'bin_scores_{bin_name}'] = None
+
                     val_perc = bin_found_percents.get(bin_name)
                     if val_perc is not None:
                         bin_percents[bin_name].append(val_perc)
+                        image_metrics[f'bin_percents_{bin_name}'] = val_perc
+                    else:
+                        bin_percents[bin_name].append(None)
+                        image_metrics[f'bin_percents_{bin_name}'] = None
 
+                single_img_results.append(image_metrics)
                 if self.debugging and id == total:
                     break
+
+            # full single image metric
+            all_single_img = pd.DataFrame(single_img_results)
+            all_single_img.index.name = 'id'
+            print(base / self.metric_folder / f'all_single_img_{pred_type}.csv')
+            self.save_df_wo_rewriting(df=all_single_img,
+                                      save_path=base / self.metric_folder / f'all_single_img_{pred_type}.csv')
+
+            # calculate means
+            all_metrics = all_single_img.drop(columns='image_id').mean(skipna=True).to_dict()
+            all_metrics_df = pd.DataFrame([all_metrics], index=[pred_type])
+            all_metrics_df.index.name = 'pred_type'
 
             ### SEGMENTATION METRICS ###
             # save all image results
@@ -504,16 +558,36 @@ class ValidatorAustriaSingleShot:
                                       save_path=base / self.metric_folder / f'obj_detection_{pred_type}.csv')
 
             ### OBJECT DETECTION BY SIZE ###
-            obj_size_result = {bin_name: np.mean(bin_scores[bin_name]) if bin_scores[bin_name] else None for bin_name in
-                      size_bins}
+            print(size_bins)
+            print(bin_scores)
+            # obj_size_result = {bin_name: np.nanmean(bin_scores[bin_name]) if bin_scores[bin_name] is not None and bin_scores[bin_name] is not None else None for bin_name in
+            #           size_bins}
+            obj_size_result = {
+                bin_name: (
+                    np.nanmean([float(v) for v in bin_scores[bin_name] if v is not None])
+                    if bin_scores.get(bin_name) and any(v is not None for v in bin_scores[bin_name])
+                    else None
+                )
+                for bin_name in size_bins
+            }
             obj_size_result_df = pd.DataFrame([obj_size_result], index=[pred_type])
             obj_size_result_df.index.name = 'pred_type'
             self.save_df_wo_rewriting(df=obj_size_result_df,
                                       save_path=base / self.metric_folder / f'obj_detection_by_size_{pred_type}.csv')
 
             ### OBJECT DETECTION BY SIZE PERCENTAGE ###
-            obj_perc_result = {bin_name: np.mean(bin_percents[bin_name]) if bin_percents[bin_name] else None for bin_name in
-                      size_bins}
+            # obj_perc_result = {bin_name: np.nanmean(bin_percents[bin_name]) if bin_percents[bin_name] is not None and bin_scores[bin_name] is not None else None for bin_name in
+            #           size_bins}
+
+            obj_perc_result = {
+                bin_name: (
+                    np.nanmean([float(v) for v in bin_percents[bin_name] if v is not None])
+                    if bin_percents.get(bin_name) and any(v is not None for v in bin_percents[bin_name])
+                    else None
+                )
+                for bin_name in size_bins
+            }
+
             obj_perc_result_df = pd.DataFrame([obj_perc_result], index=[pred_type])
             obj_perc_result_df.index.name = 'pred_type'
             self.save_df_wo_rewriting(df=obj_perc_result_df,
@@ -523,6 +597,21 @@ class ValidatorAustriaSingleShot:
         if return_metrics:
             return None
         else:
+
+            if pred_type == 'LR':
+                self.all_single_img_LR = all_single_img
+            if pred_type == 'SR':
+                self.all_single_img_SR = all_single_img
+            if pred_type == 'HR':
+                self.all_single_img_HR = all_single_img
+
+
+            if not hasattr(self, "all_single_img") or self.all_single_img is None or len(
+                    self.all_single_img) == 0:
+                self.all_single_img = all_metrics_df
+            else:
+                self.all_single_img = pd.concat([self.all_single_img, all_metrics_df])
+
             # Single Segmentation
             if not hasattr(self, "segmentation_metrics") or self.segmentation_metrics is None or len(
                     self.segmentation_metrics) == 0:
@@ -580,6 +669,77 @@ class ValidatorAustriaSingleShot:
             'Recall': recall,
             'Accuracy': accuracy
         }
+
+    def print_all_class_metrics(self, save_csv=False):
+        """
+        Display and optionally save segmentation metrics for all prediction types.
+
+        This method prints the segmentation metrics stored in `self.segmentation_metrics` in a well-formatted
+        tabular view. Optionally, the metrics can be saved to a CSV file for external use.
+
+        Args:
+            save_csv (bool): If True, saves the metrics DataFrame as a CSV file to
+                            `<output_folder>/results/segmentation_metrics.csv`.
+
+        Side Effects:
+            - Displays a table of segmentation metrics using `print_pretty_dataframe`.
+            - Creates a `results` directory under `self.output_folder` if it does not exist.
+            - Saves a CSV file with the metrics if `save_csv=True`.
+
+        Notes:
+            - Assumes `self.segmentation_metrics` is a populated pandas DataFrame.
+            - Uses external utility `print_pretty_dataframe()` for clean formatting.
+        """
+        from prettytable import PrettyTable
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+
+        def brr(df):
+            df_0 = df[df['assigned_class'] == 0]
+            df_1 = df[df['assigned_class'] == 1]
+            df_2 = df[df['assigned_class'] == 2]
+            df_3 = df[df['assigned_class'] == 3]
+            df_4 = df[df['assigned_class'] == 4]
+            df_5 = df[df['assigned_class'] == 5]
+
+            return (pd.DataFrame([df_0.drop(columns='image_id').mean(skipna=True)]),
+                    pd.DataFrame([df_1.drop(columns='image_id').mean(skipna=True)]),
+                    pd.DataFrame([df_2.drop(columns='image_id').mean(skipna=True)]),
+                    pd.DataFrame([df_3.drop(columns='image_id').mean(skipna=True)]),
+                    pd.DataFrame([df_4.drop(columns='image_id').mean(skipna=True)]),
+                    pd.DataFrame([df_5.drop(columns='image_id').mean(skipna=True)]))
+
+        # .drop(columns='image_id').mean(skipna=True).to_dict()
+        # all_metrics_df = pd.DataFrame([all_metrics], index=[pred_type])
+        # all_metrics_df.index.name = 'pred_type'
+
+        # seperate according to classes
+        # print(self.all_single_img_LR)
+        # print(self.all_single_img_SR)
+        # print(self.all_single_img_HR)
+
+        SR_metrics = brr(self.all_single_img_SR)
+        HR_metrics = brr(self.all_single_img_HR)
+        LR_metrics = brr(self.all_single_img_LR)
+
+        for i, (lr, hr, sr) in enumerate(zip(LR_metrics, HR_metrics, SR_metrics)):
+            lr['index'] = ["lr"]
+            hr['index'] = ["hr"]
+            sr['index'] = ["sr"]
+
+            # Combine them into one 3-row DataFrame
+            combined_df = pd.concat([lr, hr, sr])
+            combined_df.to_csv(os.path.join(self.output_folder, "numeric_results", f"{i}.csv"))
+            #print_pretty_dataframe(xx, index_name="Prediction Type", float_round=6, table_name='Single Image Segmentation Metrics:')
+
+
+        #
+        # if save_csv:
+        #     os.makedirs(os.path.join(self.output_folder, "numeric_results"), exist_ok=True)
+        #     self.all_single_img.to_csv(
+        #         os.path.join(self.output_folder, "numeric_results", "all_single_img.csv"))
+        #
+        # from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        # print_pretty_dataframe(self.segmentation_metrics, index_name="Prediction Type", float_round=6, table_name='Single Image Segmentation Metrics:')
 
     def print_segmentation_metrics(self, save_csv=False):
         """
@@ -890,3 +1050,38 @@ class ValidatorAustriaSingleShot:
             comparison_df.to_csv(os.path.join(self.output_folder, "numeric_results",
                                               "percent_objects_found_by_size_improvements.csv"))
 
+    def print_full_single(self, save_csv=False):
+        """
+        Display and optionally save size-based object detection metrics.
+
+        This includes both:
+        - Average prediction scores per object size bin.
+        - Percentage of objects found per size bin.
+
+        Args:
+            save_csv (bool): If True, saves CSVs under <output_folder>/numeric_results/.
+
+        Side Effects:
+            - Displays tables using `print_pretty_dataframe`.
+            - Saves CSVs to disk if save_csv is True.
+        """
+        from opensr_usecases.utils.pretty_print_df import print_pretty_dataframe
+        results_dir = os.path.join(self.output_folder, "numeric_results")
+        os.makedirs(results_dir, exist_ok=True)
+
+        if hasattr(self, "object_detection_metrics_by_size") and self.object_detection_metrics_by_size is not None:
+            print("\nAverage Prediction Score by Object Size Bin:")
+            print_pretty_dataframe(self.object_detection_metrics_by_size, index_name="Prediction Type",
+                                   float_round=6)
+            if save_csv:
+                self.object_detection_metrics_by_size.to_csv(
+                    os.path.join(results_dir, "object_detection_metrics_by_size.csv")
+                )
+
+        if hasattr(self, "percent_objects_found_by_size") and self.percent_objects_found_by_size is not None:
+            print("\nPercent of Objects Found by Object Size Bin:")
+            print_pretty_dataframe(self.percent_objects_found_by_size, index_name="Prediction Type", float_round=2)
+            if save_csv:
+                self.percent_objects_found_by_size.to_csv(
+                    os.path.join(results_dir, "percent_objects_found_by_size.csv")
+                )

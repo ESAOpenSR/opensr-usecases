@@ -226,17 +226,18 @@ class Validator:
                     # add proper image id
                     if dataloader.dataset.return_metadata:
                         image_id = f'{image_id:05d}'
-                        with rasterio.open(Path(dataloader.dataset.input_path) / f"{dataloader.dataset.id_prefix}_{image_id}.tif") as src_:
+                        with rasterio.open(Path(dataloader.dataset.target_path) / f"HR_mask_{image_id}.tif") as src_:
                             profile = src_.profile
                             mask_profile = src_.profile
-                            #print(mask_profile)
 
                         # adapt count and compression
                         mask_profile.update({'count': 1, 'compress': 'zstd', 'dtype': 'float32', 'nodata': -9999})
+                        #mask_profile.update({'width': pred.shape[1], 'height': pred.shape[2]})
 
                     # Ensure 2D mask shape
                     pred = np.squeeze(pred.cpu().numpy())
                     gt = np.squeeze(gt.cpu().numpy())
+
 
                     # Ensure 3D-shaped input image
                     im_np = im.cpu().numpy()

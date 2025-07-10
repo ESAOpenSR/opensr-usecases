@@ -63,15 +63,6 @@ class TIFDataset(Dataset):
                 self.band_indices = [1, 2, 3, 4]
                 self.id_prefix = 'S2'
 
-    def validate_data(self):
-        for i, col in self.data.iterrows():
-            img, mask = Path(col[self.input_path]), Path(col[self.target_path])
-            assert img.exists()
-            assert mask.exists()
-            # other validation
-        pass
-
-
     def resample_torch(self, arr: np.ndarray, scale_factor: float | int, mode: str='bilinear') -> np.ndarray:
         """
         Args:
@@ -105,6 +96,10 @@ class TIFDataset(Dataset):
         with rasterio.open(Path(self.input_path) / image_id) as src:
             img = src.read(self.band_indices).astype(np.float32)
             img_profile = src.profile
+            if img_profile['dtype'] == 'float32':
+                img = img
+            elif img_profile['dtype'] == 'uint16':
+                img = img / 65535.0
 
         if self.lr_interpolation:
             img = self.resample_torch(img, scale_factor=4, mode='nearest')
@@ -134,17 +129,13 @@ class TIFDataset(Dataset):
             (top, left), (img, mask, _) = max(tiles_dict.items(), key=lambda x: x[1][2])
 
 
-        if self.transform:
-            transformed = self.transform(image=img.transpose(1, 2, 0), mask=mask)
-            img_trafo = transformed["image"]
-            mask_trafo = transformed["mask"]
-        else:
-            raise 'No transform selected: apply at least a normalization'
+        img_trafo = torch.from_numpy(img)
+        mask_trafo = torch.from_numpy(mask).unsqueeze(0)
 
         if self.return_metadata:
-            return img_trafo, mask_trafo.unsqueeze(0), self.data.loc[idx, 'id'] #, (self.sanitize_rasterio_profile(img_profile))
+            return img_trafo, mask_trafo, self.data.loc[idx, 'id'] #, (self.sanitize_rasterio_profile(img_profile))
         else:
-            return img_trafo, mask_trafo.unsqueeze(0)  # Add channel dimension to mask
+            return img_trafo, mask_trafo  # Add channel dimension to mask
 
 
 class InferredDataset(Dataset):
